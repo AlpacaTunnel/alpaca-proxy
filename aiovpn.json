@@ -1,0 +1,12 @@
+{
+    "name": "ws0",
+    "mode": "client",
+    "server_url": "wss://192.168.7.21/vpn",
+    "username": "alpaca",
+    "password": "caonima",
+    "server_private_ip": "10.18.1.1/24",
+    "client_private_ip": "10.18.1.2/24",
+    "server_host": "127.0.0.1",
+    "server_port": 8081,
+    "local_routes": ["114.114.114.114", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+}
