@@ -9,7 +9,7 @@ import traceback
 from .helper import Arch, Command, Tunnel, TunSocketForwarder, byte2int, int2byte
 
 
-UNIX_SOCKET_PATH = '/tmp/ws_vpn_client.socket'
+UNIX_SOCKET_PATH = '/tmp/aiovpn_client.socket'
 
 WS_RECV_SET, WS_SEND_SET, GLOBAL_WS = 0, 0, None
 US_READER, US_WRITER = None, None
@@ -34,7 +34,7 @@ async def ws_connect(loop, url, username=None, password=None, verify_ssl=True):
                 connector = aiohttp.TCPConnector(verify_ssl=verify_ssl, force_close=True)
                 session = aiohttp.ClientSession(loop=loop, connector=connector)
 
-                fut = session.ws_connect(url, auth=auth)
+                fut = session.ws_connect(url, auth=auth, heartbeat=30)
 
                 ws = await asyncio.wait_for(fut, timeout=retry_timeout, loop=loop)
 
@@ -68,6 +68,7 @@ async def us_connext(loop, unix_path):
 
     while True:
         try:
+            await asyncio.sleep(0.1)
             fut = asyncio.open_unix_connection(unix_path, loop=loop)
             reader, writer = await asyncio.wait_for(fut, timeout=0.1, loop=loop)
 
@@ -83,7 +84,6 @@ async def us_connext(loop, unix_path):
 
         except ConnectionRefusedError:
             print('us_connect: connect to %s ConnectionRefusedError, retry...' % unix_path)
-            await asyncio.sleep(0.1)
             continue
 
         except Exception as e:
