@@ -1,0 +1,25 @@
+version: "2"
+
+services:
+  nginx-ws:
+    build: ./nginx-ws
+    ports:
+      - '80:80'
+      - '443:443'
+    links:
+      - aiovpn
+    environment:
+      DOMAINS: 'caonima.com'
+      # STAGE: 'production'
+    networks:
+      - vpnws
+
+  aiovpn:
+    build: ./aiovpn
+    privileged: true
+    networks:
+      - vpnws
+
+networks:
+  vpnws:
+    driver: bridge

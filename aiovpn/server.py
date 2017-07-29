@@ -222,7 +222,7 @@ def start_server(conf):
 
     app = web.Application()
     app.router.add_get('/', websocket_handler)
-    app.router.add_get('/{name}', websocket_handler)
+    app.router.add_get('/{tail:.*}', websocket_handler)
 
     if 'server_host' in conf:
         server_host = conf['server_host']

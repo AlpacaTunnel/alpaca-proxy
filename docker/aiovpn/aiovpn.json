@@ -1,0 +1,7 @@
+{
+    "name": "ws0",
+    "mode": "server",
+    "server_private_ip": "10.18.1.1/24",
+    "server_host": "0.0.0.0",
+    "server_port": 8080
+}
