@@ -1,9 +1,7 @@
 #!/bin/bash
-export PATH="/bin:/sbin:/usr/sbin:/usr/bin:/usr/local/bin"
 
 
-vpn_log=/tmp/vpn-ws/vpn-ws.log
-
+echo "Checking docker and docker-compose ..."
 
 [ ! "$(docker -v)" ] && \
     echo "Installing docker ..." && \
@@ -13,7 +11,6 @@ vpn_log=/tmp/vpn-ws/vpn-ws.log
     echo "install docker failed" && \
     exit 1
 
-
 [ ! "$(docker-compose -v)" ] && \
     echo "Installing docker-compose ..." && \
     apt-get install docker-compose -y
@@ -22,6 +19,8 @@ vpn_log=/tmp/vpn-ws/vpn-ws.log
     echo "install docker-compose failed" && \
     exit 1
 
+
+echo "Building images ..."
 docker-compose build
 [ $? != 0 ] && echo "build images failed" && \
     exit 1

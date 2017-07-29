@@ -6,19 +6,25 @@ services:
     ports:
       - '80:80'
       - '443:443'
+    networks:
+      - vpnws
     links:
       - aiovpn
     environment:
+      USE_HTPASSWD_FILE: 'false'
+      VPN_USERNAME: 'alpaca'
+      VPN_PASSWORD: 'caonima'
+      VPN_URL: '/aiovpn'
       DOMAINS: 'caonima.com'
-      # STAGE: 'production'
-    networks:
-      - vpnws
+      STAGE: 'staging'
 
   aiovpn:
     build: ./aiovpn
     privileged: true
     networks:
       - vpnws
+    environment:
+      PRIVATE_IP: '10.18.1.1/24'
 
 networks:
   vpnws:
