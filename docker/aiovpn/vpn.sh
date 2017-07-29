@@ -8,8 +8,8 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     echo "add iptables rule failed inside container." > $vpn_log && \
     exit 1
 
-
-nohup stdbuf -i0 -o0 -e0 python3 /opt/aiovpn/main.py > $vpn_log 2>&1 &
+echo > $vpn_log
+nohup stdbuf -i0 -o0 -e0 python3 /opt/aiovpn/main.py >> $vpn_log 2>&1 &
 tailf $vpn_log
 # python3 /opt/aiovpn/main.py
 [ $? != 0 ] && \

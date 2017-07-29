@@ -20,7 +20,7 @@ async def ws_connect(loop, url, username=None, password=None, verify_ssl=True):
 
     while True:
 
-        retry_timeout = 0
+        retry_timeout = 1
 
         while True:
             retry_timeout += 1
@@ -177,9 +177,14 @@ def start_client(conf):
     ts = TunSocketForwarder(UNIX_SOCKET_PATH, conf['name'])
     ts.start()
 
+    if 'verify_ssl' in conf and conf['verify_ssl'] is True:
+        verify_ssl = True
+    else:
+        verify_ssl = False
+
     loop = asyncio.get_event_loop()
 
-    tasks = [loop.create_task(ws_connect(loop, conf['server_url'], conf['username'], conf['password'], False)),
+    tasks = [loop.create_task(ws_connect(loop, conf['server_url'], conf['username'], conf['password'], verify_ssl)),
             loop.create_task(us_connext(loop, UNIX_SOCKET_PATH)),
             loop.create_task(ws_recv()),
             loop.create_task(us_read())]

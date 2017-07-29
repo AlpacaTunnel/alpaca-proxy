@@ -2,6 +2,7 @@
     "name": "ws0",
     "mode": "client",
     "server_url": "wss://192.168.7.21/vpn",
+    "verify_ssl": true,
     "username": "alpaca",
     "password": "caonima",
     "server_private_ip": "10.18.1.1/24",

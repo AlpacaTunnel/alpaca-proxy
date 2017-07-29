@@ -11,7 +11,8 @@ Certification
 =============
 
 The nginx image is based on steveltn/https-portal, it will auto request certificate from Let's Encrypt and renew it.
-Uncomment `STAGE: 'production'` in `docker-compose.yml` after your testing.
+
+Change the domain name and uncomment `STAGE: 'production'` in `docker-compose.yml` after your testing.
 
 
 Password Authentication

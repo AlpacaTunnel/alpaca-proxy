@@ -6,7 +6,7 @@ vpn_log=/tmp/vpn-ws/vpn-ws.log
 
 
 [ ! "$(docker -v)" ] && \
-    echo "Installing docker..." && \
+    echo "Installing docker ..." && \
     curl -sSL https://get.docker.com/ | sh
 
 [ ! "$(docker -v)" ] && \
@@ -15,7 +15,7 @@ vpn_log=/tmp/vpn-ws/vpn-ws.log
 
 
 [ ! "$(docker-compose -v)" ] && \
-    echo "Installing docker-compose..." && \
+    echo "Installing docker-compose ..." && \
     apt-get install docker-compose -y
 
 [ ! "$(docker-compose -v)" ] && \
@@ -27,7 +27,11 @@ docker-compose build
     exit 1
 
 
-echo "Starting vpn..."
+echo "Shutdown previous instances ..."
+docker-compose down
+
+
+echo "Starting vpn ..."
 docker-compose up -d
 [ $? != 0 ] && echo "start images failed" && \
     exit 1
