@@ -4,7 +4,7 @@ aiovpn
 aiovpn is a VPN implementation build on aiohttp. It uses websockets to
 wrap the ethernet packets. This implementation is compatible with vpn-ws.
 
-Python >= 3.5 and aiohttp >= 2.0 is required.
+Python 3.5+, uvloop 0.8+ and aiohttp 2.0+ are required.
 
 Edit `aiovpn.json` to configure. For client, use 'wss://' to enable ssl.
 

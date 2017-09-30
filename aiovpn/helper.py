@@ -277,6 +277,23 @@ class Tunnel():
     def delete(self):
         self._del_dev()
 
+    def open(self):
+        if not self._exists():
+            raise Exception('device not exists %s' % self.name)
+
+        if self.mode == 'tap':
+            ifr = struct.pack('16sH', str.encode(self.name), Arch.IFF_TAP | Arch.IFF_NO_PI)
+        elif self.mode == 'tun':
+            ifr = struct.pack('16sH', str.encode(self.name), Arch.IFF_TUN | Arch.IFF_NO_PI)
+        else:
+            raise Exception('mode not supported: %s' % self.mode)
+
+        tun_fd = open('/dev/net/tun', mode='r+b', buffering=0)
+
+        fcntl.ioctl(tun_fd, Arch.TUNSETIFF, ifr)
+        print('tun_open: open %s %s' % (self.mode, self.name))
+        return tun_fd
+
 
 class TunSocketForwarder(multiprocessing.Process):
     """
