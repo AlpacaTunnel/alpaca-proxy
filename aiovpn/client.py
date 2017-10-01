@@ -9,6 +9,8 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from .helper import Tunnel
 
+MAX_MTU = 9000
+
 
 async def ws_connect(loop, tun, send_q, url, username=None, password=None, verify_ssl=True):
     while True:
@@ -63,11 +65,20 @@ async def ws_recv(ws, tun):
             msg = await ws.receive()
 
         if msg.type == aiohttp.WSMsgType.BINARY:
-            packet = msg.data
-            tun.write(packet)
+            tun.write(msg.data)
 
         elif msg.type == aiohttp.WSMsgType.TEXT:
-            print('=====>>> message from server: %s' % msg.data)
+            print('=====>>> ws_recv message from server: %s' % msg.data)
+
+        elif msg.type == aiohttp.WSMsgType.CLOSED:
+            break
+
+        elif msg.type == aiohttp.WSMsgType.ERROR:
+            break
+
+        else:
+            print('ws_recv: message type unkown: %s' % msg.type)
+            break
 
 
 async def ws_send(send_q, ws):
@@ -82,7 +93,7 @@ async def ws_send(send_q, ws):
 
 def tun_read(tun, send_q):
     # Do NOT put while loop here! It will block other coroutines.
-    packet = tun.read(2048)
+    packet = tun.read(MAX_MTU)
     send_q.put_nowait(packet)
 
 

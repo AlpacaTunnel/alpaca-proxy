@@ -10,6 +10,7 @@ from aiovpn.client import start_client
 from aiovpn.server import start_server
 
 
+VERSION = '0.1'
 CONF_NAME = 'aiovpn.json'
 
 
