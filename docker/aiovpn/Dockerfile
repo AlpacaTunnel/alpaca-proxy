@@ -5,7 +5,7 @@ MAINTAINER alpaca.tunnel@gmail.com
 RUN apt-get update && \
     apt-get install iproute2 iptables -y && \
     apt-get clean && \
-    pip3 install aiohttp && \
+    pip3 install aiohttp uvloop && \
     git clone https://github.com/AlpacaTunnel/aiovpn.git /opt/aiovpn
 
 COPY aiovpn.json /opt/aiovpn/
