@@ -8,6 +8,8 @@ services:
       - '443:443'
     networks:
       - vpnws
+    volumes:
+      - /tmp/aiovpn/www/vhosts/:/var/www/vhosts/
     links:
       - aiovpn
     environment:

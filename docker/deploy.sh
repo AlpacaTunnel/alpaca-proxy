@@ -19,6 +19,7 @@ echo "Checking docker and docker-compose ..."
     echo "install docker-compose failed" && \
     exit 1
 
+mkdir -p /tmp/aiovpn/www/vhosts/
 
 echo "Building images ..."
 docker-compose build
