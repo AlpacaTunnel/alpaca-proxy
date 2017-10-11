@@ -11,6 +11,7 @@ sed -i s#10.18.1.1/24#$PRIVATE_IP#g /opt/aiovpn/aiovpn.json
 cat /opt/aiovpn/aiovpn.json
 
 
+iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1300
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 [ $? != 0 ] && \
     echo "add iptables rule failed inside container." > $vpn_log && \
