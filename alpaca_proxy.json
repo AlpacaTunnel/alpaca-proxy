@@ -1,0 +1,11 @@
+{
+    "name": "ws0",
+    "role": "client",
+    "mode": "proxy",
+    "server_url": "ws://192.168.7.21:8081/aiovpn",
+    "verify_ssl": true,
+    "username": "alpaca",
+    "password": "caonima",
+    "socks5_address": "0.0.0.0",
+    "socks5_port": 8000
+}

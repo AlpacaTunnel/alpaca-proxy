@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
 
 # Author: twitter.com/alpacatunnel
-# TBD: monitor route/tunnel, chnroute
+
 
 import os
 import json
+import argparse
 
-from aiovpn.client import start_client
-from aiovpn.server import start_server
+from alpaca_proxy.proxy_client import start_proxy_client
+from alpaca_proxy.proxy_server import start_proxy_server
+from alpaca_proxy.vpn_client import start_vpn_client
+from alpaca_proxy.vpn_server import start_vpn_server
 
 
-VERSION = '0.1'
-CONF_NAME = 'aiovpn.json'
+VERSION = '0.2'
+CONF_NAME = 'alpaca_proxy.json'
 
 
-def get_conf():
+def get_conf(conf_file=None):
 
-    cur_dir = os.path.dirname(os.path.realpath(__file__))
+    if not conf_file:
 
-    if cur_dir == '/usr/local/bin':
-        conf_path = '/usr/local/etc'
-    elif cur_dir == '/usr/bin':
-        conf_path = '/etc'
-    else:
-        conf_path = cur_dir
+        cur_dir = os.path.dirname(os.path.realpath(__file__))
 
-    conf_file = os.path.join(conf_path, CONF_NAME)
+        if cur_dir == '/usr/local/bin':
+            conf_path = '/usr/local/etc'
+        elif cur_dir == '/usr/bin':
+            conf_path = '/etc'
+        else:
+            conf_path = cur_dir
+
+        conf_file = os.path.join(conf_path, CONF_NAME)
 
     with open(conf_file) as data_file:
         conf = json.load(data_file)
@@ -33,15 +38,22 @@ def get_conf():
     return conf
 
 
-def main():
+def main(conf):
 
-    conf = get_conf()
-    if conf['mode'] == 'client':
-        start_client(conf)
-    elif conf['mode'] == 'server':
-        start_server(conf)
+    if   conf['role'] == 'client' and conf['mode'] == 'proxy':
+        start_proxy_client(conf)
+    elif conf['role'] == 'server' and conf['mode'] == 'proxy':
+        start_proxy_server(conf)
+    elif conf['role'] == 'client' and conf['mode'] == 'vpn':
+        start_vpn_client(conf)
+    elif conf['role'] == 'server' and conf['mode'] == 'vpn':
+        start_vpn_server(conf)
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--conf', default=None, help='path to the configure file')
+    args = parser.parse_args()
 
+    conf = get_conf(args.conf)
+    main(conf)

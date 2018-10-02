@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
-import platform
-import subprocess
-import ipaddress
+# Add and delete tuntap interface on Linux.
+
+# Author: twitter.com/alpacatunnel
+
+
 import re
+import platform
+import ipaddress
 import struct
 import fcntl
+
+from .command import exec_cmd
 
 
 class Arch():
@@ -42,42 +48,6 @@ class Arch():
         NLM_F_ACK = 4
         RTM_DELLINK = 17
         NLMSG_ERROR = 2
-
-
-class Command():
-    """
-    Run a cmd and wait it to terminate by itself or be terminated by a thread.
-    """
-
-    def __init__(self, cmd=None):
-        self.child = subprocess.Popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
-    
-    def wait(self, split=False, realtime_print=True, collect_output=True):
-        stream = ''
-
-        while self.child.poll() is None:
-            line = self.child.stdout.readline()
-
-            if realtime_print:
-                print(line)
-                sys.stdout.flush()
-            
-            if collect_output:
-                stream += line
-    
-        stream += self.child.communicate()[0]
-    
-        rc = self.child.returncode
-    
-        if split:
-            data = (stream.split('\n'))
-        else:
-            data = stream
-    
-        return (rc, data)
-
-    def terminate(self):
-        self.child.send_signal(signal.SIGTERM)
 
 
 class Tunnel():
@@ -162,9 +132,16 @@ class Tunnel():
             raise ValueError('%s is not instance of ipaddress.IPv6Interface' % ip)
         self._IPv6 = ip
 
-    def _cmd(self, c, split=False):
-        cmd = Command(c)
-        return cmd.wait(split=split, realtime_print=False, collect_output=True)
+    def _cmd(self, c, split=False, strict=False):
+        rc, output = exec_cmd(c, realtime_print=False)
+
+        if strict and int(rc) != 0:
+            raise Exception('cmd ({}) error: {}'.format(c, output))
+
+        if split:
+            return rc, output.split('\n')
+        else:
+            return rc, output
     
     def _exists(self):
         '''
@@ -282,3 +259,9 @@ class Tunnel():
         return tun_fd
 
 
+def _test_main():
+    pass
+
+
+if __name__ == '__main__':
+    _test_main()

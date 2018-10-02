@@ -1,12 +1,16 @@
-aiovpn
-======
+alpaca-proxy
+============
 
-aiovpn is a VPN implementation build on aiohttp. It uses websockets to
-wrap the ethernet packets. This implementation is compatible with vpn-ws.
+alpaca-proxy is a VPN/proxy implementation build on aiohttp. It uses websockets to
+wrap the ethernet/socks5 packets.
 
 Python 3.5+, uvloop 0.8+ and aiohttp 2.0+ are required.
 
-Edit `aiovpn.json` to configure. For client, use 'wss://' to enable ssl.
+Edit `alpaca-proxy.json` to configure. For client, use 'wss://' to enable ssl.
+
+Two roles, `client` and `server`.
+
+Two modes, `proxy` and `vpn`.
 
 The server does NOT support ssl, use nginx to offload ssl.
 
@@ -14,7 +18,7 @@ The server does NOT support ssl, use nginx to offload ssl.
 License
 -------
 
-Copyright (C) 2017 aiovpn
+Copyright (C) 2018 alpaca-proxy
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

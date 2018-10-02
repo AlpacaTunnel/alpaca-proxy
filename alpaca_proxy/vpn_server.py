@@ -7,7 +7,7 @@ from aiohttp import web
 import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-from .helper import Tunnel
+from .tunnel import Tunnel
 
 
 MAX_MTU = 9000
@@ -49,7 +49,7 @@ async def ws_recv_pkt(ws):
 
     if ws.closed:
         print('ws_recv_pkt: session closed')
-        return None
+        return b''
 
     while True:
         msg = await ws.receive()
@@ -70,7 +70,7 @@ async def ws_recv_pkt(ws):
             print('ws_recv_pkt: message type unkown: %s' % msg.type)
             break
 
-    return None
+    return b''
 
 
 async def websocket_handler(request):
@@ -149,7 +149,7 @@ def tun_read(tun, send_q):
     send_q.put_nowait(packet)
 
 
-def start_server(conf):
+def start_vpn_server(conf):
     send_q = asyncio.Queue()
     client_dict = {}
 
