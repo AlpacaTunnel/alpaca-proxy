@@ -9,24 +9,16 @@ services:
     networks:
       - vpnws
     volumes:
-      - /tmp/aiovpn/www/vhosts/:/var/www/vhosts/
-    links:
-      - aiovpn
+      - /tmp/alpaca/www/vhosts/:/var/www/vhosts/
     environment:
-      USE_HTPASSWD_FILE: 'false'
-      VPN_USERNAME: 'alpaca'
-      VPN_PASSWORD: 'caonima'
-      VPN_URL: '/aiovpn'
       DOMAINS: 'caonima.com'
-      STAGE: 'staging'
+      STAGE: 'local'
 
-  aiovpn:
-    build: ./aiovpn
+  alpaca:
+    build: ./alpaca
     privileged: true
     networks:
       - vpnws
-    environment:
-      PRIVATE_IP: '10.18.1.1/24'
 
 networks:
   vpnws:

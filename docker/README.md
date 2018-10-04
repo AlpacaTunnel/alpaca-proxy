@@ -1,10 +1,10 @@
-Deploy a aiovpn server and a nginx server within Docker.
-========================================================================================
+Deploy a alpaca server and a nginx server within Docker
+=======================================================
 
 Requirements
 ============
 
-The `deploy.sh` is tested only on Ubuntu 16.04, it depends on Docker and docker-compose.
+Please install Docker and docker-compose first.
 
 The nginx image is based on steveltn/https-portal, it will auto request certificate from Let's Encrypt and auto renew it.
 
@@ -14,19 +14,29 @@ The nginx configuration I used here requires a domain name. Raw IP address is fo
 Configuration
 =============
 
-Everything can be configured by editing the environments in `docker-compose.yml`. Don't change any other files, otherwise the deploy script may fail.
+## Alpaca Proxy/VPN
 
-* Change the VPN URI location: `VPN_URL`.
+You can config the alpaca server to be proxy or vpn mode by editing `alpaca/alpaca-proxy.json`. You don't need to change the host/port.
 
-* Change the private IP on server side: `PRIVATE_IP`.
+The Nginx and Alpaca docker instance communicate by the docker bridge network. The Nginx instance can access the Alpaca server by domain name `alpaca`, because it's the Alpaca server's name in `docker-compose.yml`.
 
-* Add a new user: `VPN_USERNAME` and `VPN_PASSWORD`.
+## Nginx
 
-* If you have multiple users, put them in the file `./nginx-ws/htpasswd`, and set `USE_HTPASSWD_FILE: 'true'`. This will obsolete `VPN_USERNAME` and `VPN_PASSWORD`.
+Edit the Nginx config in `nginx-ws/default.ssl.conf.erb` before build image or deploy.
 
-* Set `STAGE: 'local'` to use self-signed certificate, set `STAGE: 'staging'` to request a fake certificate from Let's Encrypt.
+In the default config, I added basic username/password authentication.
 
-* After everything is tested, set `STAGE: 'production'` for a production environment. (visit https://github.com/SteveLTN/https-portal for details)
+Edit user in `nginx-ws/htpasswd`, the format is `username:password_hash`. You can generate the hash with this cmd:
+
+```sh
+openssl passwd -apr1 YOUR_PASSWORD
+```
+
+You could also change the proxy/vpn URI location, default is `/alpaca_url/`.
+
+Set `STAGE: 'local'` to use self-signed certificate, set `STAGE: 'staging'` to request a fake certificate from Let's Encrypt.
+
+After everything is tested, set `STAGE: 'production'` for a production environment. (visit https://github.com/SteveLTN/https-portal for details)
 
 
 Deploying
@@ -35,12 +45,12 @@ Deploying
 After configuration, deploy with this cmd:
 
 ```sh
-sudo ./deploy.sh
+docker-compose up --build -d
 ```
 
-It will install Docker on the system, build the image, start a nginx server with only HTTPS, and start a aiovpn server with the private IP.
+It will build the image, start a nginx server with only HTTPS, and start a alpaca server.
 
-After the script finished, you can test the URI `https://username:password@server_domain/vpn_url`.
+After the cmd finished, you can test the URI `https://username:password@server_domain/alpaca_url/`.
 
 If anything goes wrong, you can check the logs with `docker logs instance-name`.
 

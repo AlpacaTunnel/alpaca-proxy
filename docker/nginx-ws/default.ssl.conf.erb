@@ -15,7 +15,6 @@ server {
     ssl_session_cache shared:SSL:50m;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA;
     ssl_prefer_server_ciphers on;
-    charset utf-8;
 
     ssl_dhparam <%= dhparam_path %>;
 
@@ -24,18 +23,26 @@ server {
         return 444;
     }
 
-    location /aiovpn_url/ {
-        proxy_pass http://aiovpn:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        auth_basic "Restricted Content";
-        auth_basic_user_file /etc/nginx/htpasswd;
-    }
+    <% if domain.access_restriction %>
+        <% domain.access_restriction.each do |ip| %>
+            allow <%= ip %>;
+        <% end %>
+        deny all;
+    <% end %>
+
+    <% if domain.basic_auth_enabled? %>
+        auth_basic "Password";
+        auth_basic_user_file <%= domain.htaccess_path %>;
+    <% end %>
 
     <% if domain.upstream %>
     location / {
+        <% if ENV['DYNAMIC_UPSTREAM'] && ENV['DYNAMIC_UPSTREAM'].downcase == 'true' %>
+        set $backend <%= domain.upstream %>;
+        proxy_pass $backend;
+        <% else %>
         proxy_pass <%= domain.upstream %>;
+        <% end %>
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -48,10 +55,23 @@ server {
         proxy_read_timeout 2h;
         <% end %>
     }
+    <% elsif domain.redirect_target_url %>
+    location / {
+      return    301 https://<%= domain.redirect_target_url %>$request_uri;
+    }
     <% else %>
     location / {
         root   <%= domain.www_root %>;
         index  index.html;
     }
     <% end %>
+
+    location /alpaca_url/ {
+        proxy_pass http://alpaca:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        auth_basic "Restricted Content";
+        auth_basic_user_file /etc/nginx/htpasswd;
+    }
 }
