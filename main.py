@@ -14,7 +14,7 @@ from alpaca_proxy.vpn_server import start_vpn_server
 
 
 VERSION = '0.2'
-CONF_NAME = 'alpaca_proxy.json'
+CONF_NAME = 'alpaca-proxy.json'
 
 
 def get_conf(conf_file=None):
