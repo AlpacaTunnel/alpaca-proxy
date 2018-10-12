@@ -149,9 +149,9 @@ async def ws_send_from_q(send_q, ws):
         await ws_send(ws, ws_data, msg_type)
 
 
-async def ws_client_handler(loop, mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
+async def ws_client_handler(mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
 
-    ws, session = await ws_connect(loop, url, username, password, verify_ssl)
+    ws, session = await ws_connect(url, username, password, verify_ssl)
     if not ws:
         return
 
@@ -172,9 +172,9 @@ async def ws_client_handler(loop, mp_session, s5_dict, send_q, url, username=Non
             await asyncio.sleep(1)
 
 
-async def ws_client_auto_connect(loop, mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
+async def ws_client_auto_connect(mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
     while True:
-        await ws_client_handler(loop, mp_session, s5_dict, send_q, url, username, password, verify_ssl)
+        await ws_client_handler(mp_session, s5_dict, send_q, url, username, password, verify_ssl)
 
 
 def start_proxy_client(conf):
@@ -189,7 +189,7 @@ def start_proxy_client(conf):
     loop.set_debug(True)
 
     task_server = asyncio.ensure_future(
-        ws_client_auto_connect(loop, mp_session, s5_dict, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl)
+        ws_client_auto_connect(mp_session, s5_dict, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl)
     )
 
     server = asyncio.start_server(

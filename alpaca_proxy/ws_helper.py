@@ -8,7 +8,7 @@ import traceback
 from .log import print_log
 
 
-async def ws_connect(loop, url, username=None, password=None, verify_ssl=True):
+async def ws_connect(url, username=None, password=None, verify_ssl=True, headers=None):
     """
     Connect to the url, return the ws session.
     """
@@ -24,9 +24,9 @@ async def ws_connect(loop, url, username=None, password=None, verify_ssl=True):
                 auth = None
 
             connector = aiohttp.TCPConnector(verify_ssl=verify_ssl, force_close=True)
-            session = aiohttp.ClientSession(loop=loop, connector=connector)
-            future = session.ws_connect(url, auth=auth, heartbeat=30)
-            ws = await asyncio.wait_for(future, timeout=retry_timeout, loop=loop)
+            session = aiohttp.ClientSession(connector=connector)
+            future = session.ws_connect(url, auth=auth, heartbeat=30, headers=headers)
+            ws = await asyncio.wait_for(future, timeout=retry_timeout)
             print_log('connected to %s' % url)
             # must return the session, otherwise the session will be deleted/closed.
             return ws, session

@@ -15,9 +15,9 @@ from .ws_helper import ws_connect, ws_recv, ws_send
 MAX_MTU = 9000
 
 
-async def ws_client_handler(loop, tun, send_q, url, username=None, password=None, verify_ssl=True):
+async def ws_client_handler(tun, send_q, url, username=None, password=None, verify_ssl=True):
 
-    ws, session = await ws_connect(loop, url, username, password, verify_ssl)
+    ws, session = await ws_connect(url, username, password, verify_ssl)
     if not ws:
         return
 
@@ -36,6 +36,11 @@ async def ws_client_handler(loop, tun, send_q, url, username=None, password=None
             break
         else:
             await asyncio.sleep(1)
+
+
+async def ws_client_auto_connect(tun, send_q, url, username=None, password=None, verify_ssl=True):
+    while True:
+        await ws_client_handler(tun, send_q, url, username, password, verify_ssl)
 
 
 async def ws_recv_to_tun(ws, tun):
@@ -79,7 +84,7 @@ def start_vpn_client(conf):
     loop = asyncio.get_event_loop()
     loop.add_reader(tun.fileno(), tun_read, tun, send_q)
     loop.run_until_complete(
-        ws_client_handler(loop, tun, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl)
+        ws_client_auto_connect(tun, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl)
         )
     loop.close()
 
