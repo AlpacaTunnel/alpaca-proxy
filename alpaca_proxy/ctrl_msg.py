@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Control message over websocks text stream, in json format.
 
 # Author: twitter.com/alpacatunnel

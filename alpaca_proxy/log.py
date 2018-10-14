@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import sys
 import traceback
@@ -5,7 +7,7 @@ from datetime import datetime
 
 
 def print_log(*msgs):
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     filename, lineno, func, _text = traceback.extract_stack()[-2]
     filename = os.path.basename(filename)
 

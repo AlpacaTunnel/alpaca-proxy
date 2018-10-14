@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Bidirectional multiplexing channel/stream over websocks.
 
 # Author: twitter.com/alpacatunnel

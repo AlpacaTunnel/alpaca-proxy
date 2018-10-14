@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Parse socks5 protocol, only support NO AUTHENTICATION and CONNECT CMD.
 
 # Author: twitter.com/alpacatunnel

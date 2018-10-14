@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import asyncio
 import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -14,7 +16,7 @@ async def ws_connect(url, username=None, password=None, verify_ssl=True, headers
     """
 
     retry_timeout = 2
-    while True:
+    for _x in range(10):
         retry_timeout += 2
 
         try:
