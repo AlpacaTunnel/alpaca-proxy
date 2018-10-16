@@ -35,11 +35,19 @@ async def ws_connect(url, username=None, password=None, verify_ssl=True, headers
 
         except asyncio.TimeoutError:
             print_log('connect to {} timeout, retry after {} second...'.format(url, retry_timeout))
+            try:
+                session.close()
+            except:
+                pass
             continue
 
         except Exception as e:
             print_log('connect to {} exception: {}'.format(url, traceback.format_exc()))
             print_log('retry after {} second...'.format(retry_timeout))
+            try:
+                session.close()
+            except:
+                pass
             await asyncio.sleep(retry_timeout)
             continue
 

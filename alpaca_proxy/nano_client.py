@@ -154,14 +154,6 @@ class NanoLightClient():
         excepted_keys = ['work']
         return await self._ws_request(request_dict, excepted_keys)
 
-    async def account_get(self, public_key):
-        request_dict = {
-            'action': 'account_get',
-            'key': public_key
-        }
-        excepted_keys = ['account']
-        return await self._ws_request(request_dict, excepted_keys)
-
     async def account_balance(self, account):
         request_dict = {
             'action': 'account_balance',
@@ -173,6 +165,7 @@ class NanoLightClient():
     async def account_info(self, account):
         request_dict = {
             'action': 'account_info',
+            'representative': True,
             'pending': True,
             'account': account
         }
@@ -180,6 +173,9 @@ class NanoLightClient():
         return await self._ws_request(request_dict, excepted_keys)
 
     async def block(self, hash):
+        """
+        Use self.block_info() instead, it returns the amount.
+        """
         request_dict = {
             'action': 'block',
             'hash': hash
@@ -189,6 +185,19 @@ class NanoLightClient():
         contents = response_dict['contents']
         return json.loads(contents)
 
+    async def block_info(self, hash):
+        request_dict = {
+            'action': 'blocks_info',
+            'hashes': [hash]
+        }
+        excepted_keys = ['blocks']
+        response_dict = await self._ws_request(request_dict, excepted_keys)
+        _block_info = response_dict['blocks'][hash]
+        amount = _block_info.get('amount')
+        contents = json.loads(_block_info['contents'])
+        contents['amount'] = amount
+        return contents
+
     async def block_hash(self, account, previous, representative, balance, link):
         """
         Only support "state" block, because other block types are obsoleted.
@@ -196,6 +205,8 @@ class NanoLightClient():
 
         if not previous:
             previous = EMPTY_PREVIOUS
+        if not representative:
+            representative = 'xrb_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
 
         block_dict = {
             'type': 'state',
@@ -221,6 +232,8 @@ class NanoLightClient():
 
         if not previous:
             previous = EMPTY_PREVIOUS
+        if not representative:
+            representative = 'xrb_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
 
         block_dict = {
             'type': 'state',
@@ -240,6 +253,106 @@ class NanoLightClient():
         }
         excepted_keys = ['hash']
         return await self._ws_request(request_dict, excepted_keys)
+
+    async def _nano_get_send_amount(self, source_hash):
+        source_block = await self.block_info(source_hash)
+        amount = source_block['amount']
+        if not amount:
+            raise Exception('Did not get the amount from source block hash')
+        return int(amount)
+
+    async def _nano_process_state_block(self, account, previous, representative, amount, link):
+        hash_dict = await self.block_hash(
+            account=account.xrb_account,
+            previous=previous,
+            representative=representative,
+            balance=amount,
+            link=link)
+
+        signature = account.sign(hash_dict['hash']).hex()
+
+        if previous:
+            work_dict = await self.work_generate(previous)
+        else: # for open block
+            work_dict = await self.work_generate(account.public_key.hex())
+
+        await self.process(
+            account=account.xrb_account,
+            previous=previous,
+            representative=representative,
+            balance=amount,
+            link=link,
+            signature=signature,
+            work=work_dict['work'])
+
+    async def nano_state(self, account):
+        info = await self.account_info(account.xrb_account)
+        print_log(info)
+
+    async def nano_open(self, account, source_hash):
+        """
+        source_hash: Pairing Send Block's Hash, the 'link'
+        """
+
+        previous, representative = None, None
+        amount = await self._nano_get_send_amount(source_hash)
+
+        await self._nano_process_state_block(account, previous, representative, amount, source_hash)
+
+        print_log('Received Nano: {} raw'.format(amount))
+
+    async def nano_receive(self, account, source_hash):
+        """
+        source_hash: Pairing Send Block's Hash, the 'link'
+        """
+
+        try:
+            info = await self.account_info(account.xrb_account)
+        except NanoClientError as e:
+            if 'Account not found' in str(e):
+                print_log('Account not opened yet, receive with a open block.')
+                return await self.nano_open(account, source_hash)
+            else:
+                raise
+
+        balance = int(info['balance'])
+        previous = info['frontier']
+        representative = info['representative']
+
+        if int(info['pending']) == 0:
+            print_log('No pending Nano to receive.')
+            return
+
+        amount = await self._nano_get_send_amount(source_hash)
+        total_amount = balance + amount
+
+        print_log('Current balance: {} raw'.format(balance))
+        print_log('Amount from source: {} raw'.format(amount))
+        print_log('Total pending Nano: {} raw'.format(info['pending']))
+
+        await self._nano_process_state_block(account, previous, representative, total_amount, source_hash)
+
+        print_log('Received Nano: {} raw'.format(amount))
+
+    async def nano_send(self, account, dest_account, amount):
+        amount = int(amount * 10**30)  # convert to raw
+        info = await self.account_info(account.xrb_account)
+        balance = int(info['balance'])
+        previous = info['frontier']
+        representative = info['representative']
+
+        print_log('Current balance: {} raw'.format(balance))
+        print_log('Amount to send: {} raw'.format(amount))
+
+        if amount > balance:
+            print_log('Can not send amount more than balance')
+            return
+
+        left_balance = balance - amount
+
+        await self._nano_process_state_block(account, previous, representative, left_balance, dest_account)
+
+        print_log('Left balance: {} raw'.format(left_balance))
 
 
 async def get_price():

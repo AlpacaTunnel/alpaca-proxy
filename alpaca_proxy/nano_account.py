@@ -135,7 +135,7 @@ class NanoAccountError(Exception):
 
 class Account():
 
-    def __init__(self, seed=None, private_key=None, public_key=None, xrb_account=None):
+    def __init__(self, seed=None, index=0, private_key=None, public_key=None, xrb_account=None):
         """
         All parameters should be hex strings.
 
@@ -150,8 +150,9 @@ class Account():
         self.xrb_account = xrb_account
 
         if seed:
+            assert len(seed) == 64
             self.seed = bytes.fromhex(seed)
-            self.private_key, self.public_key = seed_to_keypair(self.seed)
+            self.private_key, self.public_key = seed_to_keypair(self.seed, index)
             self.xrb_account = public_key_to_xrb_address(self.public_key)
         elif private_key:
             self.private_key = bytes.fromhex(private_key)
