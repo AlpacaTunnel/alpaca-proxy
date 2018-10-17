@@ -43,7 +43,7 @@ def main():
     elif args.send:
         assert args.amount != None
         loop.run_until_complete(client.connect())
-        loop.run_until_complete(client.nano_send(account, args.send, float(args.amount)))
+        loop.run_until_complete(client.nano_send(account, args.send, args.amount))
 
 
 if __name__ == '__main__':

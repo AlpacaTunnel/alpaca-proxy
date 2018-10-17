@@ -254,14 +254,7 @@ class NanoLightClient():
         excepted_keys = ['hash']
         return await self._ws_request(request_dict, excepted_keys)
 
-    async def _nano_get_send_amount(self, source_hash):
-        source_block = await self.block_info(source_hash)
-        amount = source_block['amount']
-        if not amount:
-            raise Exception('Did not get the amount from source block hash')
-        return int(amount)
-
-    async def _nano_process_state_block(self, account, previous, representative, amount, link):
+    async def _process_state_block(self, account, previous, representative, amount, link):
         hash_dict = await self.block_hash(
             account=account.xrb_account,
             previous=previous,
@@ -276,7 +269,7 @@ class NanoLightClient():
         else: # for open block
             work_dict = await self.work_generate(account.public_key.hex())
 
-        await self.process(
+        response_dict = await self.process(
             account=account.xrb_account,
             previous=previous,
             representative=representative,
@@ -284,6 +277,15 @@ class NanoLightClient():
             link=link,
             signature=signature,
             work=work_dict['work'])
+
+        return response_dict['hash']
+
+    async def _nano_get_sent_amount(self, source_hash):
+        source_block = await self.block_info(source_hash)
+        amount = source_block['amount']
+        if not amount:
+            raise Exception('Did not get the amount from source block hash')
+        return int(amount)
 
     async def nano_state(self, account):
         info = await self.account_info(account.xrb_account)
@@ -295,11 +297,13 @@ class NanoLightClient():
         """
 
         previous, representative = None, None
-        amount = await self._nano_get_send_amount(source_hash)
+        amount = await self._nano_get_sent_amount(source_hash)
 
-        await self._nano_process_state_block(account, previous, representative, amount, source_hash)
+        frontier_hash = await self._process_state_block(
+            account, previous, representative, amount, source_hash)
 
         print_log('Received Nano: {} raw'.format(amount))
+        print_log('Frontier block hash is: {}'.format(frontier_hash))
 
     async def nano_receive(self, account, source_hash):
         """
@@ -323,26 +327,45 @@ class NanoLightClient():
             print_log('No pending Nano to receive.')
             return
 
-        amount = await self._nano_get_send_amount(source_hash)
+        amount = await self._nano_get_sent_amount(source_hash)
         total_amount = balance + amount
 
-        print_log('Current balance: {} raw'.format(balance))
+        print_log('Current balance   : {} raw'.format(balance))
         print_log('Amount from source: {} raw'.format(amount))
         print_log('Total pending Nano: {} raw'.format(info['pending']))
 
-        await self._nano_process_state_block(account, previous, representative, total_amount, source_hash)
+        frontier_hash = await self._process_state_block(
+            account, previous, representative, total_amount, source_hash)
 
-        print_log('Received Nano: {} raw'.format(amount))
+        print_log('Received Nano     : {} raw'.format(amount))
+        print_log('Frontier block hash is: {}'.format(frontier_hash))
+
+    def _to_raw(self, amount):
+        """
+        Convert NANO (str/float/int) to raw.
+        1 NANO = 10^30 raw
+        """
+
+        # convert to str first. For float, this will be rounded up and lost precision
+        amount = str(amount)
+
+        if '.' not in amount:
+            amount += '.0'
+        a, b = amount.split('.')
+        b = b[0:30]
+        b += '0' * (30 - len(b))
+
+        return int(a) * 10**30 + int(b)
 
     async def nano_send(self, account, dest_account, amount):
-        amount = int(amount * 10**30)  # convert to raw
+        amount = self._to_raw(amount)
         info = await self.account_info(account.xrb_account)
         balance = int(info['balance'])
         previous = info['frontier']
         representative = info['representative']
 
         print_log('Current balance: {} raw'.format(balance))
-        print_log('Amount to send: {} raw'.format(amount))
+        print_log('Amount to send : {} raw'.format(amount))
 
         if amount > balance:
             print_log('Can not send amount more than balance')
@@ -350,9 +373,11 @@ class NanoLightClient():
 
         left_balance = balance - amount
 
-        await self._nano_process_state_block(account, previous, representative, left_balance, dest_account)
+        frontier_hash = await self._process_state_block(
+            account, previous, representative, left_balance, dest_account)
 
-        print_log('Left balance: {} raw'.format(left_balance))
+        print_log('Left balance   : {} raw'.format(left_balance))
+        print_log('Frontier block hash is: {}'.format(frontier_hash))
 
 
 async def get_price():
