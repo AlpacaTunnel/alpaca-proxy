@@ -6,6 +6,7 @@
     "verify_ssl": true,
     "username": "alpaca",
     "password": "caonima",
+    "nano_seed": "8dbb56813c5c22a900867ab13a4d54c6aafdd2c60053d9c56d910da379bba989",
     "socks5_address": "0.0.0.0",
     "socks5_port": 8000
 }

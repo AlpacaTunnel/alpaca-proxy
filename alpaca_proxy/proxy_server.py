@@ -9,6 +9,9 @@ from .socks5 import Socks5Parser
 from .multiplexing import Multiplexing
 from .ws_helper import ws_recv, ws_send
 from .ctrl_msg import CtrlMsg
+from .nano_account import Account
+from .nano_client import NanoLightClient, EMPTY_PREVIOUS
+from .db import DB
 
 
 async def send_s5_response(ws, stream_id, result=False):
@@ -118,6 +121,77 @@ async def ws_server(request):
     print_log('session closed')
 
 
+async def update_db_history(db, account):
+    """
+    Update block_chain history of a account from network, order blocks by block chain.
+    """
+    client = NanoLightClient(account)
+    await client.connect()
+    await client.receive_all()
+
+    history_blocks = []
+    head = None
+    count = 2
+
+    # retrieve all blocks that not in the db
+    while True:
+        history_blocks += await client.history(count=count, head=head)
+        head_block = history_blocks[-1]
+        head = head_block['hash']
+        count = 20
+
+        # found one in the db
+        if db.get_block(head):
+            break
+
+        # legacy open block
+        if head_block.get('type') == 'open':
+            break
+
+        # state open block
+        if head_block.get('previous') == EMPTY_PREVIOUS:
+            break
+
+    history_blocks.reverse()
+    for block in history_blocks:
+        db.update_block(account.xrb_account, block)
+
+
+async def update_db_bill(db):
+    """
+    Get all client accounts and their pay to all server accounts.
+    """
+    for client_account in db.get_client_accounts():
+        total_pay = 0
+        for server_account in db.get_server_accounts():
+            for block in db.get_receive_blocks(server_account, client_account):
+                total_pay += int(block['amount'])
+        db.update_total_pay(client_account, str(total_pay))
+
+
+async def update_db(db, account):
+    # create or update the server account in db
+    db.update_account(account.xrb_account, db.ROLE_SERVER)
+
+    await update_db_history(db, account)
+
+    # create or update all the client accounts in db.
+    for client in db.get_client_accounts():
+        db.update_account(client, db.ROLE_CLIENT)
+
+    await update_db_bill(db)
+
+
+async def update_db_periodically(db, account):
+    while True:
+        try:
+            await update_db(db, account)
+        except Exception as e:
+            print_log('Error update_db: {}'.format(e))
+        print_log('Sleep 60s and update the database.')
+        await asyncio.sleep(60)
+
+
 def start_proxy_server(conf):
 
     loop = asyncio.get_event_loop()
@@ -129,11 +203,20 @@ def start_proxy_server(conf):
     server_host = conf.get('server_host')
     server_port = conf.get('server_port')
     unix_path = conf.get('unix_path')
+    nano_seed = conf.get('nano_seed')
+
+    if nano_seed:
+        account = Account(seed=nano_seed)
+        print_log('Your Nano account is: {}'.format(account.xrb_account))
+        db = DB('/tmp/proxy.db')
+        asyncio.ensure_future(update_db_periodically(db, account))
 
     if unix_path:
         web.run_app(app, loop=loop, path=unix_path)
     else:
         web.run_app(app, loop=loop, host=server_host, port=server_port)
+
+    loop.run_forever()
 
 
 def _test_main():

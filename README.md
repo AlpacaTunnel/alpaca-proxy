@@ -15,6 +15,13 @@ Two modes, `proxy` and `vpn`.
 The server does NOT support ssl, use nginx to offload ssl.
 
 
+# Pay by Nano
+
+```
+$0.1 per GB
+```
+
+
 License
 -------
 
