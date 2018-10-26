@@ -13,10 +13,14 @@ from .nano_account import Account
 from .nano_client import NanoLightClient, EMPTY_PREVIOUS
 from .db import DB
 
+# default cost, unit is dollar
+DEFAULT_NANO_COST_PER_REQUEST = 0.0001
+DEFAULT_NANO_COST_PER_BYTE = 0.0001
+
 
 async def send_s5_response(ws, stream_id, result=False):
     ctrl = CtrlMsg(
-        msg_type='response',
+        msg_type=CtrlMsg.TYPE_RESPONSE,
         stream_id=stream_id,
         result=result
         )
@@ -54,30 +58,25 @@ async def s5_to_ws(ws, mp_session, stream_id, s5_reader):
             break
 
 
-async def ws_text_handler(ws, mp_session, s5_dict, ws_data):
-    ctrl = CtrlMsg()
-    ctrl.from_str(ws_data)
-    # print_log(ctrl)
+async def ws_request_handler(ws, mp_session, s5_dict, ctrl, db, cost_per_request):
+    stream_id = ctrl.stream_id
 
-    if ctrl.msg_type == 'request':
-        stream_id = ctrl.stream_id
+    if stream_id in s5_dict:
+        print_log('conflict stream_id: {}'.format(stream_id))
+        return
 
-        if stream_id in s5_dict:
-            print_log('conflict stream_id: {}'.format(stream_id))
-            return
+    s5_reader, s5_writer = await s5_connect(ctrl.dst_addr, ctrl.dst_port)
+    if not s5_reader or not s5_writer:
+        await send_s5_response(ws, stream_id, False)
+        return
 
-        s5_reader, s5_writer = await s5_connect(ctrl.dst_addr, ctrl.dst_port)
-        if not s5_reader or not s5_writer:
-            await send_s5_response(ws, stream_id, False)
-            return
+    await send_s5_response(ws, stream_id, True)
 
-        await send_s5_response(ws, stream_id, True)
-
-        asyncio.ensure_future(s5_to_ws(ws, mp_session, stream_id, s5_reader))
-        s5_dict[stream_id] = s5_writer
+    asyncio.ensure_future(s5_to_ws(ws, mp_session, stream_id, s5_reader))
+    s5_dict[stream_id] = s5_writer
 
 
-async def ws_binary_handler(mp_session, s5_dict, ws_data):
+async def ws_binary_handler(mp_session, s5_dict, ws_data, db, cost_per_byte):
     stream_id, s5_data = mp_session.receive(ws_data)
     if stream_id not in s5_dict:
         print_log('unkown stream_id: {}'.format(stream_id))
@@ -102,9 +101,25 @@ async def ws_server(request):
     mp_session = Multiplexing(role='server')
     s5_dict = {'stream_id': 's5_writer'}
 
+    db = request.app['db']
+    cryptopay = request.app['cryptopay']
+    cost_per_request = cryptopay['cost_per_request']
+    cost_per_byte = cryptopay['cost_per_byte']
+
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
-    print_log('new session connected')
+    print_log('new session connected from {}'.format(request.protocol))
+
+    if cryptopay:
+        ctrl = CtrlMsg(
+            msg_type=CtrlMsg.TYPE_CHARGE,
+            stream_id=mp_session.new_stream(),
+            coin=cryptopay['coin'],
+            cost_per_request=cost_per_request,
+            cost_per_byte=cost_per_byte,
+            )
+        result_str = ctrl.to_str()
+        await ws_send(ws, result_str, WSMsgType.TEXT)
 
     while True:
         ws_msg = await ws_recv(ws)
@@ -112,13 +127,27 @@ async def ws_server(request):
             break
 
         if ws_msg.type == WSMsgType.TEXT:
-            await ws_text_handler(ws, mp_session, s5_dict, ws_msg.data)
+            ctrl = CtrlMsg()
+            ctrl.from_str(ws_msg.data)
+
+            if ctrl.msg_type == CtrlMsg.TYPE_SIGNATURE:
+                client_account = Account(xrb_account=ctrl.account)
+                is_valid = client_account.verify(bytes(ctrl.timestamped_msg, 'utf-8'), ctrl.signature)
+                if not is_valid:
+                    print_log('signature not valid for account: {}'.format(ctrl.account))
+                    break
+
+                print_log('add account to database: {}'.format(ctrl.account))
+
+            if ctrl.msg_type == CtrlMsg.TYPE_REQUEST:
+                await ws_request_handler(ws, mp_session, s5_dict, ctrl, db, cost_per_request)
 
         elif ws_msg.type == WSMsgType.BINARY:
-            await ws_binary_handler(mp_session, s5_dict, ws_msg.data)
+            await ws_binary_handler(mp_session, s5_dict, ws_msg.data, db, cost_per_byte)
 
     await ws.close()
     print_log('session closed')
+    return ws
 
 
 async def update_db_history(db, account):
@@ -188,8 +217,8 @@ async def update_db_periodically(db, account):
             await update_db(db, account)
         except Exception as e:
             print_log('Error update_db: {}'.format(e))
-        print_log('Sleep 60s and update the database.')
-        await asyncio.sleep(60)
+        print_log('Sleep 600s and update the database.')
+        await asyncio.sleep(600)
 
 
 def start_proxy_server(conf):
@@ -204,12 +233,26 @@ def start_proxy_server(conf):
     server_port = conf.get('server_port')
     unix_path = conf.get('unix_path')
     nano_seed = conf.get('nano_seed')
+    cost_per_request = conf.get('cost_per_request', DEFAULT_NANO_COST_PER_REQUEST)
+    cost_per_byte = conf.get('cost_per_byte', DEFAULT_NANO_COST_PER_BYTE)
 
     if nano_seed:
         account = Account(seed=nano_seed)
         print_log('Your Nano account is: {}'.format(account.xrb_account))
+
         db = DB('/tmp/proxy.db')
         asyncio.ensure_future(update_db_periodically(db, account))
+
+        app['db'] = db
+        app['cryptopay'] = {
+            'coin': 'nano',
+            'cost_per_byte': cost_per_byte,
+            'cost_per_request': cost_per_request
+            }
+
+    else:
+        app['cryptopay'] = {}
+        app['db'] = None
 
     if unix_path:
         web.run_app(app, loop=loop, path=unix_path)

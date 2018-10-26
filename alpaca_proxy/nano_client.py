@@ -309,7 +309,8 @@ class NanoLightClient():
             link=link
         )
 
-        signature = self.account.sign(hash_dict['hash']).hex()
+        hash_data = bytes.fromhex(hash_dict['hash'])
+        signature = self.account.sign(hash_data).hex()
 
         if previous:
             work_dict = await self.work_generate(previous)

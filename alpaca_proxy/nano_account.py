@@ -10,7 +10,7 @@ import struct
 from pyblake2 import blake2b
 from base64 import b32encode, b32decode
 
-from .ed25519_blake2 import publickey_unsafe, signature_unsafe
+from .ed25519_blake2 import publickey_unsafe, signature_unsafe, checkvalid
 
 
 maketrans = hasattr(bytes, 'maketrans') and bytes.maketrans or string.maketrans
@@ -164,11 +164,28 @@ class Account():
         elif xrb_account:
             self.public_key = xrb_address_to_public_key(xrb_account)
 
-    def sign(self, hash):
+    def sign(self, data):
         """
-        sign a block hash with private key.
+        sign binary data with private key.
         """
         if not self.private_key:
             raise NanoAccountError('can not sign without private_key')
 
-        return signature_unsafe(bytes.fromhex(hash), self.private_key, self.public_key)
+        if not isinstance(data, bytes):
+            raise NanoAccountError('can only sign binary data')
+
+        return signature_unsafe(data, self.private_key, self.public_key)
+
+    def verify(self, data, signature):
+        """
+        verify binary data and signature with public key.
+        """
+        if not isinstance(data, bytes):
+            raise NanoAccountError('can only verify binary data')
+
+        try:
+            signature = bytes.fromhex(signature)
+            checkvalid(signature, data, self.public_key)
+            return True
+        except Exception as _e:
+            return False

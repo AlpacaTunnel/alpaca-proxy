@@ -29,7 +29,7 @@ class DB():
 
         Table `block_chain`: store the history of current account.
 
-        Table `proxy_bill`: store client account and their balance. (All Nano unit is raw.)
+        Table `proxy_bill`: store client accounts and their balance. (All Nano unit is raw.)
         Server account may change, but Nano paid to all server accounts will be counted.
         total_pay = all pay from a client to all server accounts.
         total_pay = total_spend + balance

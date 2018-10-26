@@ -3,6 +3,7 @@
 import asyncio
 import socket
 import struct
+import time
 from aiohttp import WSMsgType
 
 from .log import print_log
@@ -10,6 +11,7 @@ from .socks5 import Socks5Parser
 from .multiplexing import Multiplexing
 from .ws_helper import ws_connect, ws_recv, ws_send
 from .ctrl_msg import CtrlMsg
+from .nano_account import Account
 
 
 async def s5_prepare(s5_conn, s5_reader, s5_writer):
@@ -60,7 +62,7 @@ async def s5_server(s5_reader, s5_writer, send_q, mp_session, s5_dict):
     s5_dict[stream_id] = s5_q
 
     ctrl = CtrlMsg(
-        msg_type='request',
+        msg_type=CtrlMsg.TYPE_REQUEST,
         stream_id=stream_id,
         address_type=address_type,
         dst_addr=dst_addr,
@@ -118,7 +120,8 @@ async def ws_to_s5(stream_id, s5_q, s5_writer):
             break
 
 
-async def ws_multiplexing_decode(ws, mp_session, s5_dict):
+async def ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed):
+    account = Account(seed=nano_seed)
     while True:
         ws_msg = await ws_recv(ws)
         if not ws_msg:
@@ -127,7 +130,28 @@ async def ws_multiplexing_decode(ws, mp_session, s5_dict):
         if ws_msg.type == WSMsgType.TEXT:
             ctrl = CtrlMsg()
             ctrl.from_str(ws_msg.data)
-            stream_id, s5_data = ctrl.stream_id, ctrl
+
+            if ctrl.msg_type == CtrlMsg.TYPE_CHARGE:
+                print_log(ctrl)
+                timestamped_msg = '{}-message-to-sign'.format(time.time())
+                signature = account.sign(bytes(timestamped_msg, 'utf-8')).hex()
+
+                sign_msg = CtrlMsg(
+                    msg_type=CtrlMsg.TYPE_SIGNATURE,
+                    stream_id=mp_session.new_stream(),
+                    account=account.xrb_account,
+                    timestamped_msg=timestamped_msg,
+                    signature=signature
+                )
+                print_log(sign_msg)
+
+                ctrl_str = sign_msg.to_str()
+                send_q.put_nowait((WSMsgType.TEXT, ctrl_str))
+
+                continue
+
+            if ctrl.msg_type == CtrlMsg.TYPE_RESPONSE:
+                stream_id, s5_data = ctrl.stream_id, ctrl
 
         elif ws_msg.type == WSMsgType.BINARY:
             stream_id, s5_data = mp_session.receive(ws_msg.data)
@@ -144,18 +168,21 @@ async def ws_multiplexing_decode(ws, mp_session, s5_dict):
 
 
 async def ws_send_from_q(send_q, ws):
+    """
+    Use a q to receive and send to ws, because ws may be interrupted and re-connect.
+    """
     while True:
         msg_type, ws_data = await send_q.get()
         await ws_send(ws, ws_data, msg_type)
 
 
-async def ws_client_handler(mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
+async def ws_client_handler(mp_session, s5_dict, send_q, url, username, password, verify_ssl, nano_seed):
 
     ws, session = await ws_connect(url, username, password, verify_ssl)
     if not ws:
         return
 
-    task_recv = asyncio.ensure_future(ws_multiplexing_decode(ws, mp_session, s5_dict))
+    task_recv = asyncio.ensure_future(ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed))
     task_send = asyncio.ensure_future(ws_send_from_q(send_q, ws))
     print_log('started task: ws_recv/ws_send')
 
@@ -172,9 +199,9 @@ async def ws_client_handler(mp_session, s5_dict, send_q, url, username=None, pas
             await asyncio.sleep(1)
 
 
-async def ws_client_auto_connect(mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True):
+async def ws_client_auto_connect(mp_session, s5_dict, send_q, url, username=None, password=None, verify_ssl=True, nano_seed=None):
     while True:
-        await ws_client_handler(mp_session, s5_dict, send_q, url, username, password, verify_ssl)
+        await ws_client_handler(mp_session, s5_dict, send_q, url, username, password, verify_ssl, nano_seed)
 
 
 def start_proxy_client(conf):
@@ -184,12 +211,13 @@ def start_proxy_client(conf):
     mp_session = Multiplexing(role='client')
 
     verify_ssl = conf.get('verify_ssl', True)
+    nano_seed = conf.get('nano_seed')
 
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
 
     task_server = asyncio.ensure_future(
-        ws_client_auto_connect(mp_session, s5_dict, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl)
+        ws_client_auto_connect(mp_session, s5_dict, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl, nano_seed)
     )
 
     server = asyncio.start_server(
