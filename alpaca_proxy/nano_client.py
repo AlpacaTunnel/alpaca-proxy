@@ -7,8 +7,12 @@
 
 
 import os
+import time
 import json
+import decimal
+from pyblake2 import blake2b
 import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from aiohttp import WSMsgType
 from typing import List, Dict
 
@@ -19,6 +23,67 @@ from .nano_account import Account
 EMPTY_PREVIOUS = '0000000000000000000000000000000000000000000000000000000000000000'
 LIGHT_SERVER = 'https://light.nano.org/'
 # LIGHT_SERVER = 'https://10.1.1.31'
+
+
+def _float_to_str(f):
+    """
+    Convert the given float to a string, without resorting to scientific notation.
+    https://stackoverflow.com/questions/38847690/convert-float-to-string-without-scientific-notation-and-false-precision
+    """
+    # create a new context for this task
+    ctx = decimal.Context()
+    # 20 digits should be enough for everyone :D
+    ctx.prec = 20
+    d1 = ctx.create_decimal(repr(f))
+    return format(d1, 'f')
+
+
+def to_raw(amount):
+    """
+    Convert NANO (str/float/int) to raw.
+    1 NANO = 10^30 raw
+    """
+
+    # convert to str first. For float, this will be rounded up and lost precision
+    if isinstance(amount, float):
+        amount = _float_to_str(amount)
+    else:
+        amount = str(amount)
+
+    if '.' not in amount:
+        amount += '.0'
+    a, b = amount.split('.')
+    b = b[0:30]
+    b += '0' * (30 - len(b))
+
+    return int(a) * 10**30 + int(b)
+
+
+def _work_valid(work: bytes, data: bytes):
+    work = bytearray(work)
+    work.reverse()
+    work = bytes(work)
+
+    h = blake2b(digest_size=8)
+    h.update(work+data)
+
+    h = bytearray(h.digest())
+    h.reverse()
+
+    return h >= bytes.fromhex('FFFFFFC000000000')
+
+
+def _generate_work(hash):
+    hash = bytes.fromhex(hash)
+    start = time.time()
+
+    work = os.urandom(8)
+    while _work_valid(work, hash) is False:
+        work = os.urandom(8)
+
+    end = time.time()
+    print('cost {} seconds to generate work: {}'.format(int(end-start), work.hex()))
+    return work.hex()
 
 
 class NanoClientError(Exception):
@@ -65,10 +130,10 @@ class NanocastClient():
             try:
                 return json.loads(msg.data)
             except:
-                print_log('Load json string failed: {}'.format(msg.data))
+                print_log('Load json string failed: ({})'.format(msg.data))
                 return {}
         else:
-            print_log('Got unexpected message type: {}'.format(msg.type))
+            print_log('Got unexpected message type: ({})'.format(msg.type))
             return {}
 
     async def _ws_recv_until_success(self, excepted_keys: List[str]) -> Dict:
@@ -152,13 +217,20 @@ class NanocastClient():
         excepted_keys = ['currency', 'price']
         return await self._ws_request(request_dict, excepted_keys)
 
+    async def work_generate_local(self, hash):
+        executor = ProcessPoolExecutor(max_workers=1)
+        loop = asyncio.get_event_loop()
+        work = await loop.run_in_executor(executor, _generate_work, hash)
+        return work
+
     async def work_generate(self, hash):
         request_dict = {
             'action': 'work_generate',
             'hash': hash
         }
         excepted_keys = ['work']
-        return await self._ws_request(request_dict, excepted_keys)
+        response_dict = await self._ws_request(request_dict, excepted_keys)
+        return response_dict['work']
 
     async def account_balance(self, account):
         request_dict = {
@@ -301,7 +373,7 @@ class NanoLightClient():
         await self.cast.connect()
 
     async def _process_state_block(self, previous, representative, amount, link):
-        hash_dict = await self.block_hash(
+        hash_dict = await self.cast.block_hash(
             account=self.account.xrb_account,
             previous=previous,
             representative=representative,
@@ -313,28 +385,32 @@ class NanoLightClient():
         signature = self.account.sign(hash_data).hex()
 
         if previous:
-            work_dict = await self.work_generate(previous)
+            work = await self.cast.work_generate_local(previous)
         else: # for open block
-            work_dict = await self.work_generate(self.account.public_key.hex())
+            work = await self.cast.work_generate_local(self.account.public_key.hex())
 
-        response_dict = await self.process(
+        response_dict = await self.cast.process(
             account=self.account.xrb_account,
             previous=previous,
             representative=representative,
             balance=amount,
             link=link,
             signature=signature,
-            work=work_dict['work']
+            work=work
         )
 
         return response_dict['hash']
 
     async def _get_sent_amount(self, source_hash):
-        source_block = await self.block_info(source_hash)
+        source_block = await self.cast.block_info(source_hash)
         amount = source_block['amount']
         if not amount:
             raise Exception('Did not get the amount from source block hash')
         return int(amount)
+
+    async def get_price(self):
+        price = await self.cast.price_data()
+        return float(price['price'])
 
     async def state(self):
         return await self.cast.account_info(self.account.xrb_account)
@@ -410,25 +486,8 @@ class NanoLightClient():
         for block in pending_blocks:
             await self.receive(block)
 
-    def _to_raw(self, amount):
-        """
-        Convert NANO (str/float/int) to raw.
-        1 NANO = 10^30 raw
-        """
-
-        # convert to str first. For float, this will be rounded up and lost precision
-        amount = str(amount)
-
-        if '.' not in amount:
-            amount += '.0'
-        a, b = amount.split('.')
-        b = b[0:30]
-        b += '0' * (30 - len(b))
-
-        return int(a) * 10**30 + int(b)
-
     async def send(self, dest_account, amount):
-        amount = self._to_raw(amount)
+        amount = to_raw(amount)
         info = await self.cast.account_info(self.account.xrb_account)
         balance_before = int(info['balance'])
         previous = info['frontier']
@@ -452,7 +511,7 @@ class NanoLightClient():
         return frontier_hash
 
 
-async def get_price():
+async def test_get_price():
     client = NanocastClient()
     await client.connect(verify_ssl=False)
 
@@ -464,7 +523,7 @@ async def get_price():
 
 def main_test():
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(get_price())
+    loop.run_until_complete(test_get_price())
 
 
 if __name__ == '__main__':
