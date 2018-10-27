@@ -81,6 +81,7 @@ async def s5_server(s5_reader, s5_writer, send_q, mp_session, s5_dict):
         server_data = s5_conn.send_success_response()
         s5_writer.write(server_data)
     else:
+        print_log('request failed, reason: {}'.format(response.reason))
         server_data = s5_conn.send_failed_response(1)
         s5_writer.write(server_data)
         s5_writer.close()
@@ -119,6 +120,11 @@ async def ws_to_s5(stream_id, s5_q, s5_writer):
         if not s5_data:
             break
 
+    try:
+        s5_writer.close()
+    except Exception as _e:
+        pass
+
 
 async def ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed):
     account = Account(seed=nano_seed)
@@ -133,6 +139,10 @@ async def ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed):
 
             if ctrl.msg_type == CtrlMsg.TYPE_CHARGE:
                 print_log(ctrl)
+                if not nano_seed:
+                    print_log('nano_seed is null, skip sign.')
+                    continue
+
                 timestamped_msg = '{}-message-to-sign'.format(time.time())
                 signature = account.sign(bytes(timestamped_msg, 'utf-8')).hex()
 
@@ -214,19 +224,19 @@ def start_proxy_client(conf):
     nano_seed = conf.get('nano_seed')
 
     loop = asyncio.get_event_loop()
-    loop.set_debug(True)
+    # loop.set_debug(True)
 
-    task_server = asyncio.ensure_future(
+    asyncio.ensure_future(
         ws_client_auto_connect(mp_session, s5_dict, send_q, conf['server_url'], conf['username'], conf['password'], verify_ssl, nano_seed)
     )
 
-    server = asyncio.start_server(
+    s5_task = asyncio.start_server(
         lambda r, w: s5_server(r, w, send_q, mp_session, s5_dict),
         conf['socks5_address'],
         conf['socks5_port'],
     )
 
-    loop.run_until_complete(server)
+    asyncio.ensure_future(s5_task)
     loop.run_forever()
 
 

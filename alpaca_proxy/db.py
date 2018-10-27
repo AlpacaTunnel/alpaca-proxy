@@ -29,11 +29,14 @@ class DB():
 
         Table `block_chain`: store the history of current account.
 
-        Table `proxy_bill`: store client accounts and their balance. (All Nano unit is raw.)
+        Table `proxy_bill`: store client accounts and their balance.
+        (All Nano unit is raw. All numbers are int stored in text format.)
         Server account may change, but Nano paid to all server accounts will be counted.
         total_pay = all pay from a client to all server accounts.
         total_pay = total_spend + balance
-        The server should update and check the bill every hour, or every 100MB, or every 1000 requests.
+
+        The server should update and check the bill periodically,
+        like every hour, or every 100MB data, or every 1000 requests.
         """
 
         self.cursor.execute('''
@@ -76,17 +79,21 @@ class DB():
         CREATE TABLE IF NOT EXISTS `proxy_bill` (
             `id`                INTEGER,
             `client_account`    INTEGER,
-            `total_pay`         TEXT,
-            `total_spend`       TEXT,
-            `balance`           TEXT,
-            `total_bytes`       TEXT,
-            `total_requests`    TEXT,
+            `total_pay`         TEXT DEFAULT "0",
+            `total_spend`       TEXT DEFAULT "0",
+            `balance`           TEXT DEFAULT "0",
+            `total_bytes`       TEXT DEFAULT "0",
+            `total_requests`    TEXT DEFAULT "0",
             PRIMARY KEY (`id`),
             FOREIGN KEY (`client_account`) REFERENCES `nano_account` (`id`),
             CONSTRAINT `unique_bill_account_1` UNIQUE (`client_account`)
         );
         ''')
 
+        self.conn.commit()
+
+    def commit(self):
+        # Note: call this method after update bill !!!
         self.conn.commit()
 
     def get_account(self, account):
@@ -222,6 +229,9 @@ class DB():
         print_log('Updated account block: {} / {}'.format(account, block_dict['hash']))
 
     def _update_bill(self, account, key, value):
+        # Note: to avoid commit too often, will not auto commit here.
+        # call db.commit() after update bill !!!
+
         client_account = self.get_account(account)['id']
         # if not exist, insert; if exist, ignore.
         self.cursor.execute('''
@@ -239,23 +249,48 @@ class DB():
             (value, client_account)
         )
 
-        self.conn.commit()
+        # self.conn.commit()
         print_log('Updated client_account {}: {} / {}'.format(key, account, value))
+
+    def get_bill(self, account):
+        client_account = self.get_account(account)['id']
+        self.cursor.execute('SELECT * from `proxy_bill` WHERE `client_account` = ?', (client_account, ))
+        bill = self.cursor.fetchone()  # None or dict
+        if not bill:
+            return {}
+
+        bill_dict = {}
+        for key in bill.keys():
+            if key not in ['id', 'client_account']:
+                bill_dict[key] = bill[key]
+        return bill_dict
+
+    def _increase_bill(self, account, key, amount):
+        current = self.get_bill(account)[key]
+        total = str(int(current) + int(amount))
+        self._update_bill(account, key, total)
 
     def update_total_pay(self, account, total_pay):
         self._update_bill(account, 'total_pay', total_pay)
 
-    def update_total_spend(self, account, total_spend):
-        self._update_bill(account, 'total_spend', total_spend)
+    def increase_total_spend(self, account, increase):
+        self._increase_bill(account, 'total_spend', increase)
 
-    def update_total_bytes(self, account, total_bytes):
-        self._update_bill(account, 'total_bytes', total_bytes)
+    def increase_total_bytes(self, account, increase):
+        self._increase_bill(account, 'total_bytes', increase)
 
-    def update_total_requests(self, account, total_requests):
-        self._update_bill(account, 'total_requests', total_requests)
+    def increase_total_requests(self, account, increase):
+        self._increase_bill(account, 'total_requests', increase)
 
-    def update_bill_balance(self, account, balance):
-        self._update_bill(account, 'balance', balance)
+    def update_bill_balance(self, account):
+        bill = self.get_bill(account)
+        balance = int(bill['total_pay']) - int(bill['total_spend'])
+        self._update_bill(account, 'balance', str(balance))
+
+    def get_bill_balance(self, account):
+        bill = self.get_bill(account)
+        balance = int(bill['balance'])
+        return balance
 
 
 def test_main():
