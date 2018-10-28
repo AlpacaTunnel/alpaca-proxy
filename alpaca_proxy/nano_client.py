@@ -74,6 +74,8 @@ def _work_valid(work: bytes, data: bytes):
 
 
 def _generate_work(hash):
+    print_log('start to generate work for hash: {}'.format(hash))
+
     hash = bytes.fromhex(hash)
     start = time.time()
 
@@ -82,7 +84,7 @@ def _generate_work(hash):
         work = os.urandom(8)
 
     end = time.time()
-    print('cost {} seconds to generate work: {}'.format(int(end-start), work.hex()))
+    print_log('cost {} seconds to generate work: {}'.format(int(end-start), work.hex()))
     return work.hex()
 
 
@@ -95,6 +97,8 @@ class NanocastClient():
     def __init__(self, server=LIGHT_SERVER):
         self.server = server
         self.ws = None
+        self._ws_session = None
+        self._maintain_task_started = False
 
     async def connect(self, verify_ssl=True):
         # header of Android and iOS
@@ -107,6 +111,7 @@ class NanocastClient():
             raise NanoClientError('connect to server failed: {}'.format(self.server))
         self.ws = ws
         self._ws_session = session  # keep the session, otherwise it will be closed
+        self._maintain_conn()
 
     async def close(self):
         if self.ws:
@@ -116,15 +121,34 @@ class NanocastClient():
     def __del__(self):
         asyncio.ensure_future(self.close())
 
-    async def _ws_send(self, request_dict):
+    async def _wait_ws_alive(self):
         while self.ws is None:
             await asyncio.sleep(0.01)
+
+    async def _reconnect(self):
+        await self._wait_ws_alive()
+        while True:
+            if self.ws.closed:
+                await self.close()
+                await self.connect()
+            await asyncio.sleep(1)
+
+    def _maintain_conn(self):
+        """
+        Local work generator may take too long time, ws connection may lost.
+        """
+        if self._maintain_task_started:
+            return
+        asyncio.ensure_future(self._reconnect())
+        self._maintain_task_started = True
+
+    async def _ws_send(self, request_dict):
+        await self._wait_ws_alive()
         data = json.dumps(request_dict)
         return await ws_send(self.ws, data, WSMsgType.TEXT)
 
     async def _ws_recv(self):
-        while self.ws is None:
-            await asyncio.sleep(0.01)
+        await self._wait_ws_alive()
         msg = await ws_recv(self.ws)
         if msg.type == WSMsgType.TEXT:
             try:
@@ -171,7 +195,7 @@ class NanocastClient():
             try:
                 response_dict = await asyncio.wait_for(future, timeout=timeout)
             except asyncio.TimeoutError:
-                error = 'Timeout receiving websockets message'
+                error = 'Timeout receiving websockets message, expect {}'.format(excepted_keys)
                 break
 
             # may be binary data or malformed json
@@ -385,9 +409,15 @@ class NanoLightClient():
         signature = self.account.sign(hash_data).hex()
 
         if previous:
-            work = await self.cast.work_generate_local(previous)
+            work_data = previous
         else: # for open block
-            work = await self.cast.work_generate_local(self.account.public_key.hex())
+            work_data = self.account.public_key.hex()
+
+        try:
+            work = await self.cast.work_generate(work_data)
+        except Exception as e:
+            print_log('get work from online server failed: {}'.format(e))
+            work = await self.cast.work_generate_local(work_data)
 
         response_dict = await self.cast.process(
             account=self.account.xrb_account,

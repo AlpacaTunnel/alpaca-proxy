@@ -242,7 +242,10 @@ async def update_db_history(db, account):
     print_log('cost per request: {} NANO, or {} raw'.format(cost_per_request, RAW_PER_REQUEST))
     print_log('cost per byte: {} NANO, or {} raw'.format(cost_per_byte, RAW_PER_BYTE))
 
-    await client.receive_all()
+    try:
+        await client.receive_all()
+    except Exception as e:
+        print_log('Error receive all pending: {}'.format(e))
 
     history_blocks = []
     head = None
