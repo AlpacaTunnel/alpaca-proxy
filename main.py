@@ -13,7 +13,7 @@ from alpaca_proxy.vpn_client import start_vpn_client
 from alpaca_proxy.vpn_server import start_vpn_server
 
 
-VERSION = '0.2'
+VERSION = '1.0'
 CONF_NAME = 'alpaca-proxy.json'
 
 

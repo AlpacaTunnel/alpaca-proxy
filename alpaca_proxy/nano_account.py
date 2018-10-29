@@ -3,7 +3,7 @@
 
 # This file was mainly copied from https://github.com/dourvaris/nano-python/tree/master/nano
 # Because pip installed version does not include generate_account yet, so I copy them here.
-# And also add sign functions.
+# The code of nano-python is licensed under MIT License.
 
 
 import struct

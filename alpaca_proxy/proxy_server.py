@@ -307,8 +307,8 @@ async def update_db_periodically(db, account):
         except Exception as e:
             print_log('Error update_db: {}'.format(e))
         db.commit()
-        print_log('Sleep 600s and update the database.')
-        await asyncio.sleep(600)
+        print_log('Sleep 60s and update the database.')
+        await asyncio.sleep(60)
 
 
 def start_proxy_server(conf):
@@ -325,6 +325,7 @@ def start_proxy_server(conf):
     unix_path = conf.get('unix_path')
 
     cryptocoin = conf.get('cryptocoin')
+    database = conf.get('database', '/tmp/proxy.db')
     nano_seed = conf.get('nano_seed')
     price_kilo_requests = conf.get('price_kilo_requests', 0.01)
     price_gigabytes = conf.get('price_gigabytes', 0.01)
@@ -339,7 +340,7 @@ def start_proxy_server(conf):
         account = Account(seed=nano_seed)
         print_log('Your Nano account is: {}'.format(account.xrb_account))
 
-        db = DB('/tmp/proxy.db')
+        db = DB(database)
         asyncio.ensure_future(update_db_periodically(db, account))
 
         app['db'] = db

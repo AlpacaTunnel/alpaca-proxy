@@ -519,7 +519,9 @@ class NanoLightClient():
         try:
             pending_blocks = await self.cast.pending2(self.account.xrb_account)
         except:
+            print_log('get pending with accounts_pending RPC failed, try another.')
             pending_blocks = await self.cast.pending(self.account.xrb_account)
+
         if not pending_blocks:
             print_log('No pending block found.')
             return
