@@ -284,6 +284,16 @@ class NanocastClient():
         response_dict = await self._ws_request(request_dict, excepted_keys)
         return response_dict['blocks']
 
+    async def pending2(self, account):
+        request_dict = {
+            'action': 'accounts_pending',
+            'count': 10,
+            'accounts': [account, ]
+        }
+        excepted_keys = ['blocks']
+        response_dict = await self._ws_request(request_dict, excepted_keys)
+        return response_dict['blocks'][account]
+
     async def account_history(self, account, count=10, head=None):
         if head:
             request_dict = {
@@ -506,7 +516,10 @@ class NanoLightClient():
         """
         Receive all pending block.
         """
-        pending_blocks = await self.cast.pending(self.account.xrb_account)
+        try:
+            pending_blocks = await self.cast.pending2(self.account.xrb_account)
+        except:
+            pending_blocks = await self.cast.pending(self.account.xrb_account)
         if not pending_blocks:
             print_log('No pending block found.')
             return
