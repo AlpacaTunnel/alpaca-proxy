@@ -19,6 +19,8 @@ services:
     privileged: true
     networks:
       - vpnws
+    volumes:
+      - /tmp/db/:/tmp/
 
 networks:
   vpnws:

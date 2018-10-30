@@ -3,5 +3,10 @@
     "role": "server",
     "mode": "proxy",
     "server_host": "0.0.0.0",
-    "server_port": 8080
+    "server_port": 8080,
+    "cryptocoin": "nano",
+    "database": "/tmp/proxy.db",
+    "nano_seed": "390b9fc5efb2be3154579ea3e152f26226d5ab746dd9cf7b34ce11eadb635d31",
+    "price_kilo_requests": "0.01",
+    "price_gigabytes": "0.1"
 }
