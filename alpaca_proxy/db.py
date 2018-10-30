@@ -250,7 +250,7 @@ class DB():
         )
 
         # self.conn.commit()
-        print_log('Updated client_account {}: {} / {}'.format(key, account, value))
+        # print_log('Updated client_account {}: {} / {}'.format(key, account, value))
 
     def get_bill(self, account):
         client_account = self.get_account(account)['id']

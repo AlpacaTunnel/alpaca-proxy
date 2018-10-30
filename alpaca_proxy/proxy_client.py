@@ -126,6 +126,23 @@ async def ws_to_s5(stream_id, s5_q, s5_writer):
         pass
 
 
+async def ws_send_signature(send_q, mp_session, account):
+    timestamped_msg = '{}-message-to-sign'.format(time.time())
+    signature = account.sign(bytes(timestamped_msg, 'utf-8')).hex()
+
+    sign_msg = CtrlMsg(
+        msg_type=CtrlMsg.TYPE_SIGNATURE,
+        stream_id=mp_session.new_stream(),
+        client_account=account.xrb_account,
+        timestamped_msg=timestamped_msg,
+        signature=signature
+    )
+    print_log(sign_msg)
+
+    ctrl_str = sign_msg.to_str()
+    send_q.put_nowait((WSMsgType.TEXT, ctrl_str))
+
+
 async def ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed):
     account = Account(seed=nano_seed)
     while True:
@@ -143,24 +160,15 @@ async def ws_multiplexing_decode(ws, mp_session, s5_dict, send_q, nano_seed):
                     print_log('nano_seed is null, skip sign.')
                     continue
 
-                timestamped_msg = '{}-message-to-sign'.format(time.time())
-                signature = account.sign(bytes(timestamped_msg, 'utf-8')).hex()
-
-                sign_msg = CtrlMsg(
-                    msg_type=CtrlMsg.TYPE_SIGNATURE,
-                    stream_id=mp_session.new_stream(),
-                    account=account.xrb_account,
-                    timestamped_msg=timestamped_msg,
-                    signature=signature
-                )
-                print_log(sign_msg)
-
-                ctrl_str = sign_msg.to_str()
-                send_q.put_nowait((WSMsgType.TEXT, ctrl_str))
-
+                await ws_send_signature(send_q, mp_session, account)
                 continue
 
-            if ctrl.msg_type == CtrlMsg.TYPE_RESPONSE:
+            elif ctrl.msg_type == CtrlMsg.TYPE_BALANCE:
+                print_log(ctrl)
+                print_log('======>>> Warning: balance is {}'.format(ctrl.balance))
+                continue
+
+            elif ctrl.msg_type == CtrlMsg.TYPE_RESPONSE:
                 stream_id, s5_data = ctrl.stream_id, ctrl
 
         elif ws_msg.type == WSMsgType.BINARY:
@@ -198,7 +206,7 @@ async def ws_client_handler(mp_session, s5_dict, send_q, url, username, password
 
     while True:
         if ws.closed:
-            session.close()
+            await session.close()
             await ws.close()
             print_log('closed session to {}'.format(url))
             task_recv.cancel()

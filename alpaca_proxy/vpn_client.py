@@ -27,7 +27,7 @@ async def ws_client_handler(tun, send_q, url, username=None, password=None, veri
 
     while True:
         if ws.closed:
-            session.close()
+            await session.close()
             await ws.close()
             print_log('closed session to %s' % url)
             task_recv.cancel()

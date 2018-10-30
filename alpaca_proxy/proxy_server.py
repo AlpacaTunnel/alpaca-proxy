@@ -21,6 +21,9 @@ COST_PER_BYTE = 0.000001
 RAW_PER_REQUEST = to_raw(COST_PER_REQUEST * NANO_PRICE_USD)
 RAW_PER_BYTE = to_raw(COST_PER_BYTE * NANO_PRICE_USD)
 
+# warn on last 100 requests or 10,000 bytes
+BALANCE_WARN_THRESHOLD = RAW_PER_REQUEST * 100 + RAW_PER_BYTE * 10**4
+
 
 async def send_s5_response(ws, stream_id, result=False, reason=None):
     ctrl = CtrlMsg(
@@ -29,9 +32,9 @@ async def send_s5_response(ws, stream_id, result=False, reason=None):
         result=result,
         reason=reason
         )
-    result_str = ctrl.to_str()
+    ctrl_str = ctrl.to_str()
 
-    await ws_send(ws, result_str, WSMsgType.TEXT)
+    await ws_send(ws, ctrl_str, WSMsgType.TEXT)
 
 
 async def s5_connect(dst_addr, dst_port):
@@ -47,6 +50,35 @@ async def s5_connect(dst_addr, dst_port):
         return None, None
 
 
+def charge_bytes(db, xrb_account, size):
+    # return balance
+    if not xrb_account:
+        return 1
+
+    balance = db.get_bill_balance(xrb_account)
+
+    spend = RAW_PER_BYTE * size
+    db.increase_total_bytes(xrb_account, size)
+    db.increase_total_spend(xrb_account, spend)
+    db.update_bill_balance(xrb_account)
+
+    return balance
+
+
+def charge_requests(db, xrb_account):
+    # return balance
+    if not xrb_account:
+        return 1
+
+    balance = db.get_bill_balance(xrb_account)
+
+    db.increase_total_requests(xrb_account, 1)
+    db.increase_total_spend(xrb_account, RAW_PER_REQUEST)
+    db.update_bill_balance(xrb_account)
+
+    return balance
+
+
 async def s5_to_ws(ws, mp_session, stream_id, s5_reader, db, xrb_account):
     while True:
         try:
@@ -55,19 +87,12 @@ async def s5_to_ws(ws, mp_session, stream_id, s5_reader, db, xrb_account):
             print_log('stream_id:', stream_id, e)
             break
 
-        if xrb_account:
-            balance = db.get_bill_balance(xrb_account)
-            if balance < 0:
-                s5_data = b''
+        balance = charge_bytes(db, xrb_account, len(s5_data))
+        if balance < 0:
+            s5_data = b''
 
         ws_data = mp_session.send(stream_id, s5_data)
         await ws_send(ws, ws_data, WSMsgType.BINARY)
-
-        if xrb_account:
-            spend = RAW_PER_BYTE * len(ws_data)
-            db.increase_total_bytes(xrb_account, len(ws_data))
-            db.increase_total_spend(xrb_account, spend)
-            db.update_bill_balance(xrb_account)
 
         # EOF
         if not s5_data:
@@ -75,24 +100,33 @@ async def s5_to_ws(ws, mp_session, stream_id, s5_reader, db, xrb_account):
 
 
 async def ws_signature_handler(ctrl, db):
-    client_account = Account(xrb_account=ctrl.account)
+    client_account = Account(xrb_account=ctrl.client_account)
     is_valid = client_account.verify(bytes(ctrl.timestamped_msg, 'utf-8'), ctrl.signature)
     if not is_valid:
-        print_log('signature not valid for account: {}'.format(ctrl.account))
+        print_log('signature not valid for account: {}'.format(ctrl.client_account))
         return False
 
-    db.update_account(ctrl.account, DB.ROLE_CLIENT)
+    db.update_account(ctrl.client_account, DB.ROLE_CLIENT)
     await update_db_bill(db)
-    print_log('added account to database: {}'.format(ctrl.account))
+    print_log('added account to database: {}'.format(ctrl.client_account))
 
     return True
 
 
-async def ws_request_handler(ws, mp_session, s5_dict, ctrl, db, xrb_account):
+async def ws_request_handler(ws, mp_session, s5_dict, ctrl, db, xrb_account, account_verified):
     stream_id = ctrl.stream_id
 
     if stream_id in s5_dict:
         print_log('conflict stream_id: {}'.format(stream_id))
+        return
+
+    if not account_verified:
+        await send_s5_response(ws, ctrl.stream_id, False, CtrlMsg.REASON_ACCOUNT_NOT_VERIFIED)
+        return
+
+    balance = charge_requests(db, xrb_account)
+    if balance < 0:
+        await send_s5_response(ws, ctrl.stream_id, False, CtrlMsg.REASON_NEGATIVE_BALANCE)
         return
 
     s5_reader, s5_writer = await s5_connect(ctrl.dst_addr, ctrl.dst_port)
@@ -106,12 +140,14 @@ async def ws_request_handler(ws, mp_session, s5_dict, ctrl, db, xrb_account):
     s5_dict[stream_id] = s5_writer
 
 
-async def ws_binary_handler(mp_session, s5_dict, ws_data, end=False):
+async def ws_binary_handler(mp_session, s5_dict, ws_data, db, xrb_account):
     stream_id, s5_data = mp_session.receive(ws_data)
     if stream_id not in s5_dict:
         print_log('unkown stream_id: {}'.format(stream_id))
         return
-    if end:
+
+    balance = charge_bytes(db, xrb_account, len(s5_data))
+    if balance < 0:
         s5_data = b''
 
     # ws_to_s5
@@ -128,39 +164,38 @@ async def ws_binary_handler(mp_session, s5_dict, ws_data, end=False):
         s5_dict.pop(stream_id)
 
 
-async def ws_server_handler(request):
-    try:
-        await ws_server(request)
-    except Exception as e:
-        print_log('Error: got Exception: {} end.' .format(e))
-    return web.WebSocketResponse(heartbeat=3)
+async def ws_send_bill(ws, mp_session, db, xrb_account):
+    bill = db.get_bill(xrb_account)
+
+    ctrl = CtrlMsg(
+        msg_type=CtrlMsg.TYPE_BALANCE,
+        stream_id=mp_session.new_stream(),
+        balance=bill.get('balance'),
+        total_pay=bill.get('total_pay'),
+        total_spend=bill.get('total_spend'),
+        total_requests=bill.get('total_requests'),
+        total_bytes=bill.get('total_bytes'),
+    )
+    ctrl_str = ctrl.to_str()
+    print_log(ctrl_str)
+    await ws_send(ws, ctrl_str, WSMsgType.TEXT)
 
 
-async def ws_server(request):
-
-    global RAW_PER_REQUEST, RAW_PER_BYTE
+async def ws_server(ws, db, cryptocoin):
     mp_session = Multiplexing(role='server')
     s5_dict = {'stream_id': 's5_writer'}
-
-    db = request.app['db']
-    cryptocoin = request.app['cryptocoin']
-    price_kilo_requests = cryptocoin.get('price_kilo_requests')
-    price_gigabytes = cryptocoin.get('price_gigabytes')
-
-    ws = web.WebSocketResponse(heartbeat=30)
-    await ws.prepare(request)
-    print_log('new session connected from {}'.format(request.protocol))
 
     if cryptocoin:
         ctrl = CtrlMsg(
             msg_type=CtrlMsg.TYPE_CHARGE,
             stream_id=mp_session.new_stream(),
             coin=cryptocoin.get('coin'),
-            price_kilo_requests=price_kilo_requests,
-            price_gigabytes=price_gigabytes,
+            server_account=cryptocoin.get('server_account'),
+            price_kilo_requests=cryptocoin.get('price_kilo_requests'),
+            price_gigabytes=cryptocoin.get('price_gigabytes'),
         )
-        result_str = ctrl.to_str()
-        await ws_send(ws, result_str, WSMsgType.TEXT)
+        ctrl_str = ctrl.to_str()
+        await ws_send(ws, ctrl_str, WSMsgType.TEXT)
 
         account_verified = False
 
@@ -183,45 +218,37 @@ async def ws_server(request):
                 if not account_verified:
                     break
 
-                xrb_account = ctrl.account
-                bill = db.get_bill(ctrl.account)
-                print_log(bill)
+                xrb_account = ctrl.client_account
+                await ws_send_bill(ws, mp_session, db, xrb_account)
 
             if ctrl.msg_type == CtrlMsg.TYPE_REQUEST:
-                if not account_verified:
-                    await send_s5_response(ws, ctrl.stream_id, False, CtrlMsg.REASON_ACCOUNT_NOT_VERIFIED)
-                    continue
+                await ws_request_handler(ws, mp_session, s5_dict, ctrl, db, xrb_account, account_verified)
 
-                if cryptocoin:
-                    balance = db.get_bill_balance(xrb_account)
-                    if balance < 0:
-                        await send_s5_response(ws, ctrl.stream_id, False, CtrlMsg.REASON_NEGATIVE_BALANCE)
-                        continue
-
-                    db.increase_total_requests(xrb_account, 1)
-                    db.increase_total_spend(xrb_account, RAW_PER_REQUEST)
-                    db.update_bill_balance(xrb_account)
-
-                await ws_request_handler(ws, mp_session, s5_dict, ctrl, db, xrb_account)
+                if xrb_account and db.get_bill_balance(xrb_account) < BALANCE_WARN_THRESHOLD:
+                    await ws_send_bill(ws, mp_session, db, xrb_account)
 
         elif ws_msg.type == WSMsgType.BINARY:
-            if cryptocoin:
-                balance = db.get_bill_balance(xrb_account)
-                if balance < 0:
-                    await ws_binary_handler(mp_session, s5_dict, ws_msg.data, end=True)
-                    continue
-
-            await ws_binary_handler(mp_session, s5_dict, ws_msg.data)
-
-            if cryptocoin:
-                spend = RAW_PER_BYTE * len(ws_msg.data)
-                db.increase_total_bytes(xrb_account, len(ws_msg.data))
-                db.increase_total_spend(xrb_account, spend)
-                db.update_bill_balance(xrb_account)
+            await ws_binary_handler(mp_session, s5_dict, ws_msg.data, db, xrb_account)
 
     await ws.close()
     print_log('session closed')
     return ws
+
+
+async def http_server_handler(request):
+    try:
+        ws = web.WebSocketResponse(heartbeat=30)
+        await ws.prepare(request)
+        print_log('new session connected from {}'.format(request.protocol))
+
+        db = request.app['db']
+        cryptocoin = request.app['cryptocoin']
+        await ws_server(ws, db, cryptocoin)
+
+    except Exception as e:
+        print_log('Error: got Exception: ({})' .format(e))
+
+    return web.WebSocketResponse(heartbeat=3)
 
 
 async def update_db_history(db, account):
@@ -231,7 +258,7 @@ async def update_db_history(db, account):
     client = NanoLightClient(account)
     await client.connect()
 
-    global NANO_PRICE_USD, COST_PER_REQUEST, COST_PER_BYTE, RAW_PER_REQUEST, RAW_PER_BYTE
+    global NANO_PRICE_USD, COST_PER_REQUEST, COST_PER_BYTE, RAW_PER_REQUEST, RAW_PER_BYTE, BALANCE_WARN_THRESHOLD
     NANO_PRICE_USD = await client.get_price()
     print_log('current price {} USD'.format(NANO_PRICE_USD))
 
@@ -239,6 +266,7 @@ async def update_db_history(db, account):
     cost_per_byte = NANO_PRICE_USD * COST_PER_BYTE
     RAW_PER_REQUEST = to_raw(cost_per_request)
     RAW_PER_BYTE = to_raw(cost_per_byte)
+    BALANCE_WARN_THRESHOLD = RAW_PER_REQUEST * 100 + RAW_PER_BYTE * 10**4
     print_log('cost per request: {} NANO, or {} raw'.format(cost_per_request, RAW_PER_REQUEST))
     print_log('cost per byte: {} NANO, or {} raw'.format(cost_per_byte, RAW_PER_BYTE))
 
@@ -314,11 +342,9 @@ async def update_db_periodically(db, account):
 def start_proxy_server(conf):
     print_log(conf)
 
-    loop = asyncio.get_event_loop()
-
     app = web.Application()
-    app.router.add_get('/', ws_server_handler)
-    app.router.add_get('/{tail:.*}', ws_server_handler)
+    app.router.add_get('/', http_server_handler)
+    app.router.add_get('/{tail:.*}', http_server_handler)
 
     server_host = conf.get('server_host')
     server_port = conf.get('server_port')
@@ -346,19 +372,21 @@ def start_proxy_server(conf):
         app['db'] = db
         app['cryptocoin'] = {
             'coin': cryptocoin,
+            'server_account': account.xrb_account,
             'price_gigabytes': price_gigabytes,
             'price_kilo_requests': price_kilo_requests,
-            }
+        }
 
     else:
         app['cryptocoin'] = {}
         app['db'] = None
 
     if unix_path:
-        web.run_app(app, loop=loop, path=unix_path)
+        web.run_app(app, path=unix_path)
     else:
-        web.run_app(app, loop=loop, host=server_host, port=server_port)
+        web.run_app(app, host=server_host, port=server_port)
 
+    loop = asyncio.get_event_loop()
     loop.run_forever()
 
 
