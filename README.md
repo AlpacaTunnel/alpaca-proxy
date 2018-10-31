@@ -4,15 +4,49 @@ alpaca-proxy
 alpaca-proxy is a VPN/proxy implementation build on aiohttp. It uses websockets
 to wrap the ethernet/socks5 packets.
 
-Python 3.5+, uvloop 0.8+ and aiohttp 2.0+ are required.
+### Software requirement
 
-Edit `alpaca-proxy.json` to configure. For client, use 'wss://' to enable ssl.
+Requires Python 3.5+ to run the proxy app, and a HTTP server, such as Nginx to
+do HTTP basic authentication and ssl termination.
 
-Two roles, `client` and `server`.
+```sh
+apt install nginx python3-pip
+pip3 install aiohttp uvloop pyblake2
+```
 
-Two modes, `proxy` and `vpn`.
+You can also deploy them with Docker, see [docker deploy document]
+(https://github.com/AlpacaTunnel/alpaca-proxy/blob/master/docker/README.md).
 
-The server does NOT support ssl, use nginx to offload ssl.
+
+### Configuration and Usage
+
+The software has two modes, `proxy/vpn`, and two roles, `client/server`.
+
+VPN mode will setup a virtual NIC on your computer, and it tunnels layer 3 IP
+packets between server/client. Use VPN mode only in a private environment and
+don't share the VPN server to anyone else.
+
+Proxy mode is similar to shadowsocks. The client setup a socks5 server, listen
+for socks5 requests, and send requests to server via a websockets connection.
+Server parse the requests and send response to client.
+
+The default config file is `alpaca-proxy.json`. More examples, see
+[example](https://github.com/AlpacaTunnel/alpaca-proxy/tree/master/example).
+
+In client config, `server_url` with `ws://` will connect to server via HTTP.
+URL with `wss://` will connect to server via HTTPS. You can also use `http://`
+and `https://`. Set `verify_ssl` to `true` if you want to verify the server's
+certificate. `socks5_address/socks5_port` is your local socks5 server, you
+can set your browser's socks5 address to them.
+
+The server does NOT support authentication and HTTPS, use nginx to offload ssl.
+With Nginx, you'll need to set `proxy_pass` to pass HTTP connections to the server.
+
+Currently, the app is only tested on Ubuntu Linux. Run the app with this cmd
+
+```sh
+python3 main.py --conf alpaca-proxy.json
+```
 
 
 ## Pay via Nano
