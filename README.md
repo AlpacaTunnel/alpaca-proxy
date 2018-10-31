@@ -4,7 +4,7 @@ alpaca-proxy
 alpaca-proxy is a VPN/proxy implementation build on aiohttp. It uses websockets
 to wrap the ethernet/socks5 packets.
 
-### Software requirement
+## Software requirement
 
 Requires Python 3.5+ to run the proxy app, and a HTTP server, such as Nginx to
 do HTTP basic authentication and ssl termination.
@@ -14,11 +14,11 @@ apt install nginx python3-pip
 pip3 install aiohttp uvloop pyblake2
 ```
 
-You can also deploy them with Docker, see [docker deploy document]
-(https://github.com/AlpacaTunnel/alpaca-proxy/blob/master/docker/README.md).
+You can also deploy them with Docker, see
+[docker deploy document](https://github.com/AlpacaTunnel/alpaca-proxy/blob/master/docker/README.md).
 
 
-### Configuration and Usage
+## Configuration and Usage
 
 The software has two modes, `proxy/vpn`, and two roles, `client/server`.
 
@@ -37,7 +37,7 @@ In client config, `server_url` with `ws://` will connect to server via HTTP.
 URL with `wss://` will connect to server via HTTPS. You can also use `http://`
 and `https://`. Set `verify_ssl` to `true` if you want to verify the server's
 certificate. `socks5_address/socks5_port` is your local socks5 server, you
-can set your browser's socks5 address to them.
+can set your browser's socks5 proxy address to them.
 
 The server does NOT support authentication and HTTPS, use nginx to offload ssl.
 With Nginx, you'll need to set `proxy_pass` to pass HTTP connections to the server.
@@ -91,9 +91,11 @@ server to prove that you own the account.
 
 Not implemented yet:
 You can manually send Nano to the server's address, or let the client do it.
-For example, you set `auto_pay` to 0.1, the client will send 0.1 Nano to the
-server when your balance reaches 0. (Server will push its Nano account to client.)
-So you won't worry you spent money but got bad service.
+For example, you set `auto_pay` to 0.1, the client will send 0.1 dollar to the
+server when your balance goes below a particular amount. (Server will push its
+Nano account to client.) So you don't need to pay a lot of money to the server
+at the beginning. You can pay a small amount of money to the server each time
+and pay often, since Nano is very good at instant and small payment.
 
 
 License
