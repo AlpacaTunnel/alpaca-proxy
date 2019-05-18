@@ -219,6 +219,7 @@ class NanocastClient():
                     break
 
             if not expected:
+                print_log('Warning: got message but not expected: {}'.format(response_dict))
                 continue
 
             # return a fully expected dict

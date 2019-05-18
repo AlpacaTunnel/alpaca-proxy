@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import traceback
 import asyncio
 from aiohttp import web
 from aiohttp import WSMsgType
@@ -246,9 +247,8 @@ async def http_server_handler(request):
         await ws_server(ws, db, cryptocoin)
 
     except Exception as e:
-        print_log('Error: got Exception: ({})' .format(e))
-
-    return web.WebSocketResponse(heartbeat=3)
+        error_trace = traceback.format_exc()
+        print_log(f'Error: got Exception: {e}, details: ({error_trace})')
 
 
 async def update_db_history(db, account):
