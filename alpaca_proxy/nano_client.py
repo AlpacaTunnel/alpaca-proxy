@@ -153,7 +153,8 @@ class NanocastClient():
         if msg.type == WSMsgType.TEXT:
             try:
                 return json.loads(msg.data)
-            except:
+            except Exception as e:
+                print_log(e.__class__.__name__, e)
                 print_log('Load json string failed: ({})'.format(msg.data))
                 return {}
         else:
@@ -232,6 +233,7 @@ class NanocastClient():
         await self._ws_send(request_dict)
         await asyncio.sleep(0.03)
         response_dict = await self._ws_recv_until_success(excepted_keys)
+        print_log(response_dict)
         return response_dict
 
     async def price_data(self):
@@ -349,7 +351,7 @@ class NanocastClient():
         if not previous:
             previous = EMPTY_PREVIOUS
         if not representative:
-            representative = 'xrb_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
+            representative = 'nano_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
 
         block_dict = {
             'type': 'state',
@@ -358,12 +360,14 @@ class NanocastClient():
             'representative': representative,
             'balance': balance,
             'link': link,
+            'signature': '',
+            'work': '0000000000000000',
         }
-        block_json = json.dumps(block_dict)
 
         request_dict = {
             'action': 'block_hash',
-            'block': block_json
+            'json_block': True,
+            'block': block_dict
         }
         excepted_keys = ['hash']
         return await self._ws_request(request_dict, excepted_keys)
@@ -376,7 +380,7 @@ class NanocastClient():
         if not previous:
             previous = EMPTY_PREVIOUS
         if not representative:
-            representative = 'xrb_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
+            representative = 'nano_1nanode8ngaakzbck8smq6ru9bethqwyehomf79sae1k7xd47dkidjqzffeg' # Nanode Rep
 
         block_dict = {
             'type': 'state',
@@ -427,7 +431,7 @@ class NanoLightClient():
         try:
             work = await self.cast.work_generate(work_data)
         except Exception as e:
-            print_log('get work from online server failed: {}'.format(e))
+            print_log('get work from online server failed: {} {}'.format(e.__class__.__name__, e))
             work = await self.cast.work_generate_local(work_data)
 
         response_dict = await self.cast.process(
@@ -519,7 +523,8 @@ class NanoLightClient():
         """
         try:
             pending_blocks = await self.cast.pending2(self.account.xrb_account)
-        except:
+        except Exception as e:
+            print_log(e.__class__.__name__, e)
             print_log('get pending with accounts_pending RPC failed, try another.')
             pending_blocks = await self.cast.pending(self.account.xrb_account)
 

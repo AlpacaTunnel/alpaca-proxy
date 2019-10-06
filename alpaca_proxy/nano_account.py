@@ -77,7 +77,7 @@ def public_key_to_xrb_address(public_key):
     padded = b'000' + public_key
     address = b32xrb_encode(padded)[4:]
     checksum = b32xrb_encode(address_checksum(public_key))
-    return 'xrb_' + address.decode('ascii') + checksum.decode('ascii')
+    return 'nano_' + address.decode('ascii') + checksum.decode('ascii')
 
 
 def xrb_address_to_public_key(address):
@@ -95,8 +95,8 @@ def xrb_address_to_public_key(address):
 
     address = bytearray(address, 'ascii')
 
-    if not address.startswith(b'xrb_'):
-        raise ValueError('address does not start with xrb_: %s' % address)
+    if not address.startswith(b'xrb_') or not address.startswith(b'nano_'):
+        raise ValueError('address does not start with xrb_ or nano_: %s' % address)
 
     if len(address) != 64:
         raise ValueError('address must be 64 chars long: %s' % address)
